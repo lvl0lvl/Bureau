@@ -1,0 +1,35 @@
+{
+  "name": "bureau",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "A personal office of AI staff that runs on your own Mac and your own Claude subscription.",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @bureau/server --filter @bureau/web dev",
+    "dev:demo": "BUREAU_DEMO=1 pnpm dev",
+    "build": "pnpm --filter @bureau/web build",
+    "start": "pnpm --filter @bureau/server start",
+    "start:demo": "BUREAU_DEMO=1 pnpm --filter @bureau/server start",
+    "pair": "pnpm --filter @bureau/server pair",
+    "office:restore": "node --disable-warning=ExperimentalWarning apps/server/src/restore.ts",
+    "test": "pnpm --filter @bureau/server test",
+    "typecheck": "pnpm -r typecheck",
+    "setup:check": "sh scripts/setup-check.sh",
+    "service:install": "sh scripts/service.sh install",
+    "service:uninstall": "sh scripts/service.sh uninstall",
+    "service:status": "sh scripts/service.sh status",
+    "service:logs": "sh scripts/service.sh logs",
+    "remote:on": "sh scripts/remote.sh on",
+    "remote:off": "sh scripts/remote.sh off",
+    "remote:status": "sh scripts/remote.sh status",
+    "mac:build": "sh scripts/mac-app.sh build",
+    "mac:install": "sh scripts/mac-app.sh install"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.22.0",
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

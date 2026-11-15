@@ -1,0 +1,26 @@
+# Reference clones of other projects (see docs/research/README.md)
+reference/
+
+# Dependencies and builds
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Secrets and local state
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+xcuserdata/
+*.xcuserstate
+DerivedData/
