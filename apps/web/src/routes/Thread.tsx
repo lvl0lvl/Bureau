@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ACTION_CLASSES, LEVEL_SHORT, recordTotal } from '@shared/contract.ts';
 import type { Level, Staff, UsageSummary } from '@shared/contract.ts';
-import { BackIcon, Bubble, Hatch, LevelMarks, Sheet } from '../components/bits.tsx';
+import { BackIcon, Bubble, Hatch, LevelMarks, LiveMark, Sheet, waitWords } from '../components/bits.tsx';
+import { ArtifactsBlock, ArtifactViewer, useArtifactParam } from '../components/Artifacts.tsx';
 import { Composer, Transcript } from '../components/Conversation.tsx';
 import { ContextLine } from '../components/Usage.tsx';
 import { pickLevel } from '../components/LevelPicker.tsx';
 import { clock, isoDay, plural, when } from '../lib/format.ts';
 import { back, Link } from '../lib/router.tsx';
 import { api } from '../sync/client.ts';
-import { useIsPhone, useNow, useStore, useWorkList } from '../sync/store.ts';
+import { useHireDrafts, useIsPhone, useNow, useStore, useWorkList } from '../sync/store.ts';
 import { WORK_STATE_LABEL, workState } from './Work.tsx';
 
 // ------------------------------------------------------------------- details
@@ -84,6 +85,8 @@ export function StaffDetails({ staff }: { staff: Staff }) {
           ))}
         </section>
       )}
+
+      <ArtifactsBlock staff={staff} />
 
       <section className="aside-block">
         <div className="aside-head">
@@ -162,12 +165,34 @@ export function StaffDetails({ staff }: { staff: Staff }) {
 }
 // -------------------------------------------------------------------- thread
 
+/**
+ * In the chief of staff's thread, a hire drafted there: the draft is kept on the hiring desk, so
+ * say so and open it. Without this a draft made in the ordinary thread could not be found.
+ */
+function DraftBar() {
+  const drafts = useHireDrafts();
+  if (drafts.length === 0) return null;
+  const first = drafts[0]!;
+  const role = (h: { role: string }) => `${h.role.charAt(0).toLowerCase()}${h.role.slice(1)}`;
+  return (
+    <Link to={`/hire?draft=${encodeURIComponent(first.id)}`} className="thread-pointer">
+      <span className="grow">
+        <b>{drafts.length === 1 ? 'A hire is waiting for you' : `${drafts.length} hires are waiting for you`}:</b>{' '}
+        {drafts.map((h) => `${h.name || 'unnamed'}, ${role(h)}`).join('; ')}.
+      </span>
+      <span className="link">Open the draft</span>
+    </Link>
+  );
+}
+
 export function Thread({ staffId }: { staffId: string }) {
   const staff = useStore((s) => s.staff[staffId]);
   const running = useStore((s) => !!s.live[staffId]?.running);
   const activity = useStore((s) => s.live[staffId]?.activity ?? null);
+  const waitKind = useStore((s) => { const id = s.live[staffId]?.waitingSlipId; return id ? s.slips[id]?.kind ?? 'action' : null; });
   const [details, setDetails] = useState(false);
   const phone = useIsPhone();
+  const artifact = useArtifactParam();
 
   if (!staff) {
     return (
@@ -193,8 +218,9 @@ export function Thread({ staffId }: { staffId: string }) {
           <div className="grow">
             <h1 className="thread-name">{staff.name}</h1>
             <p className="thread-sub">
+              {running && <LiveMark waiting={!!waitKind} />}
               {staff.role}
-              {running && activity ? `. ${activity}.` : ''}
+              {running ? (waitKind ? <span className="red">. {waitWords(waitKind)}.</span> : `. ${activity ?? 'Working'}.`) : ''}
             </p>
             <p className="thread-sub phone-only">
               <ContextLine staff={staff} />
@@ -208,6 +234,8 @@ export function Thread({ staffId }: { staffId: string }) {
           </button>
         </header>
 
+        {staff.isChief && <DraftBar />}
+
         <Transcript
           staff={staff}
           empty={
@@ -220,7 +248,8 @@ export function Thread({ staffId }: { staffId: string }) {
         <Composer staff={staff} />
       </div>
 
-      <aside className="thread-aside">
+      <aside className="thread-aside" aria-label="Details">
+        <h2 className="aside-heading">Details</h2>
         <StaffDetails staff={staff} />
       </aside>
 
@@ -229,6 +258,8 @@ export function Thread({ staffId }: { staffId: string }) {
           <StaffDetails staff={staff} />
         </Sheet>
       )}
+
+      {artifact && <ArtifactViewer staffId={staff.id} id={artifact.id} />}
     </div>
   );
 }

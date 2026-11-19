@@ -12,7 +12,12 @@ import { Signature } from './Signature.tsx';
 /** Slips signed on this device in this sitting: their signature is written out once. */
 const justSigned = new Set<string>();
 
-function signLabel(slip: Slip, taught?: Staff): string {
+function signLabel(slip: Slip, taught?: Staff, ticked?: number): string {
+  if (slip.batch) {
+    const all = slip.batch.items.length;
+    const n = ticked ?? all;
+    return n === all ? `Sign all ${all}` : `Sign ${n} of ${all}`;
+  }
   if (slip.kind === 'lesson') return taught ? `Sign into ${taught.name}’s profile` : 'Sign into the profile';
   if (slip.actionClass?.startsWith('mail.')) return 'Sign and send';
   return 'Sign';
@@ -43,7 +48,7 @@ function UndoBar({ slip, next }: { slip: Slip; next?: string | null }) {
   const verb = slip.actionClass?.startsWith('mail.') ? 'Sending' : slip.kind === 'promotion' ? 'Taking effect' : 'Going ahead';
   return (
     <div className="slip-undo">
-      <Check color="#1D3FE3" size={18} />
+      <Check color="var(--blue)" size={18} />
       <div className="slip-undo-text" aria-live="polite">
         {left > 0 ? `${verb} in ${left} second${left === 1 ? '' : 's'}` : `${verb} now`}
         {next ? <small>Next: {next}</small> : null}
@@ -67,6 +72,8 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
   const [text, setText] = useState(slip.draft?.text ?? '');
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState('');
+  /** A batch: the items left ticked. All of them to start with. */
+  const [ticked, setTicked] = useState<Set<number>>(() => new Set(slip.batch?.items.map((_, i) => i) ?? []));
   const editRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLElement>(null);
 
@@ -140,8 +147,14 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
     justSigned.add(slip.id);
     const changed = slip.draft && text !== slip.draft.text ? text : undefined;
     setEditing(false);
-    void api.sign(slip.id, changed);
+    void api.sign(slip.id, changed, slip.batch ? [...ticked].sort((a, b) => a - b) : undefined);
   };
+  const tick = (i: number) => setTicked((cur) => {
+    const next = new Set(cur);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    return next;
+  });
 
   const shown = open || sheet;
   const below = (
@@ -165,6 +178,36 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
         </div>
       )}
 
+      {shown && slip.batch && (
+        <div className="slip-batch">
+          {pending && (
+            <div className="slip-batch-head">
+              <span>{slip.batch.items.length} to sign at once. Untick any you do not want.</span>
+              <button className="btn btn-quiet btn-sm" type="button" onClick={() => setTicked(ticked.size === slip.batch!.items.length ? new Set() : new Set(slip.batch!.items.map((_, i) => i)))}>
+                {ticked.size === slip.batch.items.length ? 'Untick all' : 'Tick all'}
+              </button>
+            </div>
+          )}
+          <ul className="slip-batch-list">
+            {slip.batch.items.map((it, i) => {
+              const on = pending ? ticked.has(i) : (slip.batch!.approved ?? slip.batch!.items.map((_, j) => j)).includes(i);
+              const left = !pending && slip.status !== 'declined' && !on;
+              return (
+                <li key={i} className={left ? 'is-left' : ''}>
+                  <label>
+                    <input type="checkbox" checked={pending ? on : on && slip.status !== 'declined'} disabled={!pending} onChange={() => tick(i)} />
+                    <span>
+                      {it.label}
+                      {left && <small>Left out</small>}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       {shown && pending && slip.kind === 'question' && (
         <div className="slip-options" style={{ paddingBottom: 12 }}>
           {(slip.options ?? []).map((o) => (
@@ -177,8 +220,8 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
 
       {shown && pending && slip.kind !== 'question' && !declining && (
         <div className="slip-actions">
-          <button className="btn btn-blue" onClick={() => void sign()}>
-            {signLabel(slip, prepared)}
+          <button className="btn btn-blue" onClick={() => void sign()} disabled={!!slip.batch && ticked.size === 0}>
+            {signLabel(slip, prepared, slip.batch ? ticked.size : undefined)}
           </button>
           {slip.draft?.editable && (
             <button className="btn btn-line" onClick={() => setEditing(!editing)}>
@@ -291,7 +334,7 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
         <div className="slip-text">
           <div className="slip-titleline">
             <span className="slip-mark">
-              {pending ? <span className="dot" /> : hasSig || slip.status === 'signed' ? <Check color="#1D3FE3" size={10} /> : <span className="dot grey" style={{ width: 6, height: 6 }} />}
+              {pending ? <span className="dot" /> : hasSig || slip.status === 'signed' ? <Check color="var(--blue)" size={10} /> : <span className="dot grey" style={{ width: 6, height: 6 }} />}
             </span>
             <h3 className="slip-title">{slip.title}</h3>
           </div>
@@ -300,7 +343,7 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
             <p className="slip-origin">
               {slip.origin.trigger}
               {read.length > 0 && `. Outside material read on the way: ${read.join(', ')}`}
-              {slip.edited && '. You changed the draft before signing'}
+              {slip.edited && (slip.batch ? '. You left some out' : '. You changed the draft before signing')}
             </p>
           )}
           {concern && (
@@ -318,11 +361,12 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
                 className="btn btn-blue"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (slip.kind === 'question') setUserOpen(true);
+                  // A batch is read item by item before it is signed.
+                  if (slip.kind === 'question' || slip.batch) setUserOpen(true);
                   else void sign();
                 }}
               >
-                {slip.kind === 'question' ? 'Answer' : slip.kind === 'lesson' ? 'Sign' : signLabel(slip)}
+                {slip.kind === 'question' ? 'Answer' : slip.batch ? `Read ${slip.batch.items.length}` : slip.kind === 'lesson' ? 'Sign' : signLabel(slip)}
               </button>
             </div>
           </div>
@@ -349,7 +393,7 @@ export const SlipCard = memo(function SlipCard({ slip, autoOpen = false, compact
               {slip.detail ? `${slip.detail} ` : ''}
               {slip.origin.trigger}
               {read.length > 0 && `. Outside material read on the way: ${read.join(', ')}`}
-              {slip.edited && '. You changed the draft before signing'}.
+              {slip.edited && (slip.batch ? '. You left some out' : '. You changed the draft before signing')}.
             </p>
             {concern && (
               <p className="slip-concern" style={{ paddingLeft: 0 }}>

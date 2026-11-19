@@ -73,7 +73,7 @@ export class Slips {
   }
 
   create(
-    input: Pick<Slip, 'kind' | 'staffId' | 'title' | 'detail' | 'origin'> & Partial<Pick<Slip, 'actionClass' | 'draft' | 'options' | 'promotion' | 'lesson'>>,
+    input: Pick<Slip, 'kind' | 'staffId' | 'title' | 'detail' | 'origin'> & Partial<Pick<Slip, 'actionClass' | 'draft' | 'options' | 'promotion' | 'lesson' | 'batch'>>,
     opts: { needsWaiter: boolean; addRow?: boolean } = { needsWaiter: false },
   ): Slip {
     const staff = this.store.get('staff', input.staffId);
@@ -125,14 +125,23 @@ export class Slips {
     });
   }
 
-  sign(id: string, text?: string): Slip | { error: string } {
+  /** Sign a slip. For a batch, `items` names the items signed (all of them when left out). */
+  sign(id: string, text?: string, items?: number[]): Slip | { error: string } {
     const slip = this.store.get('slip', id);
     if (!slip) return { error: 'No such slip.' };
     if (slip.status !== 'pending') return { error: 'This slip is no longer waiting.' };
     if (slip.kind === 'question') return { error: 'Answer a question rather than signing it.' };
     const settings = this.store.get('settings', 'settings')!;
-    const edited = text !== undefined && slip.draft?.editable === true && text !== slip.draft.text;
-    if (edited) {
+    let approved: number[] | undefined;
+    if (slip.batch) {
+      const all = slip.batch.items.map((_, i) => i);
+      approved = items === undefined ? all : [...new Set(items)].filter((i) => Number.isInteger(i) && i >= 0 && i < all.length).sort((a, b) => a - b);
+      if (!approved.length) return { error: 'Tick at least one item, or decline the whole set.' };
+    }
+    const unticked = !!approved && approved.length < slip.batch!.items.length;
+    const textEdited = text !== undefined && slip.draft?.editable === true && text !== slip.draft.text;
+    const edited = unticked || textEdited;
+    if (textEdited) {
       const priv = this.store.getPrivate<SlipPrivate>('_slipx', id) ?? { id, needsWaiter: false };
       this.store.putPrivate<SlipPrivate>('_slipx', { ...priv, editedText: text, originalText: priv.originalText ?? slip.draft!.text });
     }
@@ -141,7 +150,8 @@ export class Slips {
       s.status = 'signing';
       s.commitAt = Date.now() + wait;
       s.edited = edited || undefined;
-      if (edited && s.draft) s.draft = { ...s.draft, text: text! };
+      if (textEdited && s.draft) s.draft = { ...s.draft, text: text! };
+      if (approved && s.batch) s.batch = { ...s.batch, approved };
     })!;
     this.timers.set(id, setTimeout(() => this.commit(id), wait));
     return next;
@@ -152,7 +162,7 @@ export class Slips {
     if (!slip || slip.status !== 'signing') return { error: 'It has already gone ahead.' };
     clearTimeout(this.timers.get(id));
     this.timers.delete(id);
-    return this.store.update('slip', id, (s) => { s.status = 'pending'; s.commitAt = undefined; })!;
+    return this.store.update('slip', id, (s) => { s.status = 'pending'; s.commitAt = undefined; if (s.batch) { s.batch = { classId: s.batch.classId, items: s.batch.items }; s.edited = undefined; } })!;
   }
 
   private commit(id: string) {

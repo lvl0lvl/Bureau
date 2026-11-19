@@ -17,6 +17,7 @@ import { DropWatch, Uploads } from './intake.ts';
 import { ensureStaffHome, seed, seedDemo } from './seed.ts';
 import { Slips } from './slips.ts';
 import { Store } from './store.ts';
+import { Artifacts } from './artifacts.ts';
 import { buildTools } from './tools.ts';
 import { Turns } from './turns.ts';
 import { MAX_WORK_DEPTH, Work } from './work.ts';
@@ -41,6 +42,7 @@ export interface App {
   hires: Hires;
   work: Work;
   drive: OfficeDrive;
+  artifacts: Artifacts;
   backup: Backup;
   engine: Engine;
   onLive(fn: (live: Live) => void): () => void;
@@ -73,7 +75,8 @@ export function createApp(opts: { home: string; engine: Engine; demo?: boolean; 
       const p = checkPrompt({
         preparedBy: preparedBy?.name ?? 'A colleague', role: preparedBy?.role ?? 'staff', title: slip.title, detail: slip.detail,
         trigger: slip.origin.trigger, read: slip.origin.read,
-        meta: (slip.draft?.meta ?? []).map((m) => `${m.label}: ${m.value}`).join('; '), text: slip.draft?.text ?? '',
+        meta: (slip.draft?.meta ?? []).map((m) => `${m.label}: ${m.value}`).join('; '),
+        text: slip.batch ? slip.batch.items.map((it, i) => `${i + 1}. ${it.label} (${it.title})`).join('\n') : slip.draft?.text ?? '',
       });
       const answer = await opts.engine.ask({ ...p, configDir: chief.configDir });
       const line = answer.split('\n').map((l) => l.trim()).filter(Boolean)[0] ?? '';
@@ -97,7 +100,7 @@ export function createApp(opts: { home: string; engine: Engine; demo?: boolean; 
   let turns!: Turns;
   turns = new Turns({
     store, slips, engine: opts.engine, books, staffRoot, skills, work, drive,
-    buildTools: (running) => buildTools({ store, slips, catalog, hires, work, drive, staffRoot, books: books.dir, turns: () => turns }, running),
+    buildTools: (running) => buildTools({ store, slips, catalog, hires, work, drive, staffRoot, books: books.dir, turns: () => turns, dropWatch: () => drop }, running),
     onLive: (live) => { for (const fn of liveListeners) fn(live); },
   });
 
@@ -130,6 +133,7 @@ export function createApp(opts: { home: string; engine: Engine; demo?: boolean; 
   drive.ensure();
   const backup = new Backup({ store, home, drive, work, age: opts.age, busy: () => turns.allLive().some((l) => l.running) });
 
+  const artifacts = new Artifacts({ store, staffRoot, drive });
   const uploads = new Uploads(home);
   uploads.sweep();
   // Whatever the owner leaves in "Drop here" goes to the chief of staff.
@@ -147,12 +151,13 @@ export function createApp(opts: { home: string; engine: Engine; demo?: boolean; 
     const title = slip.kind === 'question' ? `${who} has a question` : slip.kind === 'promotion' ? 'A promotion to consider' : `${who} needs your signature`;
     // A slip can be signed straight from the notification only when it is a plain action that does
     // not trace back to anything read from outside. Everything else has to be opened and read.
-    const signable = slip.kind === 'action' && slip.origin.read.length === 0;
+    // A batch is read item by item before it is signed, so it is never signed from a notification.
+    const signable = slip.kind === 'action' && slip.origin.read.length === 0 && !slip.batch;
     void push.notify({ title, body: slip.title, url: `/?slip=${slip.id}`, tag: slip.id, slipId: slip.id, signable });
   });
 
   return {
-    home, staffRoot, store, books, slips, turns, scheduler, usage, uploads, drop, auth, push, catalog, skills, hires, work, drive, backup, engine: opts.engine,
+    home, staffRoot, store, books, slips, turns, scheduler, usage, uploads, drop, auth, push, catalog, skills, hires, work, drive, artifacts, backup, engine: opts.engine,
     onLive: (fn) => { liveListeners.add(fn); return () => liveListeners.delete(fn); },
     onNeedsOwner: (fn) => { slipListeners.add(fn); return () => slipListeners.delete(fn); },
     close: () => { scheduler.stop(); backup.stop(); usage.stop(); drop.stop(); store.close(); },

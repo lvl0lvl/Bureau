@@ -6,6 +6,7 @@ import { useStore } from '../sync/store.ts';
 
 function guessLabel(): string {
   const ua = navigator.userAgent;
+  if (window.bureauNative?.platform === 'macos') return 'Mac app';
   const device = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'Computer';
   const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
   return browser && !/iPhone|iPad|Android/.test(ua) ? `${device}, ${browser}` : device;
@@ -13,9 +14,11 @@ function guessLabel(): string {
 
 export function Pair() {
   const session = useStore((s) => s.session);
-  const fromLink = new URLSearchParams(location.search).get('code') ?? '';
+  const params = new URLSearchParams(location.search);
+  const fromLink = params.get('code') ?? '';
   const [code, setCode] = useState(fromLink);
-  const [label, setLabel] = useState(guessLabel);
+  // The Mac app's installer passes the computer's own name.
+  const [label, setLabel] = useState(() => params.get('label')?.slice(0, 60) || guessLabel());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const tried = useRef(false);

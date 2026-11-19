@@ -377,7 +377,7 @@ export function Calendar() {
             })}
           </div>
           <p className="cal-foot">
-            Choose a day to see it above, and choose it again to go back. Entries with a black edge are due dates and red ones need you. A blue edge is an appointment copied from your Google Calendar. Lighter entries are duties staff run by themselves.
+            Choose a day to see it above, and choose it again to go back. <i className="cal-key" />is a due date, <i className="cal-key red" />needs you, and <i className="cal-key blue" />is an appointment copied from your Google Calendar. Lighter entries are duties staff run by themselves.
           </p>
         </section>
       )}

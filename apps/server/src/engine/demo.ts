@@ -168,7 +168,7 @@ export class DemoEngine implements Engine {
             skills: ids.slice(0, 2).map((id) => ({ id, take: true, why: 'Closest match in the catalog.' })),
             note: 'This is the demo engine, so the proposal is a template. With Claude connected it is written from the conversation.',
           });
-          yield* say('The draft is beside this conversation. I kept the starting authority low: reading and drafting, with a signature for anything that leaves the office. Tell me what to change, or edit it yourself and sign.');
+          yield* say('The draft is on the hiring desk. I kept the starting authority low: reading and drafting, with a signature for anything that leaves the office. Tell me what to change, or edit it yourself and sign.');
         }
       } else if (/under drop here:|now in your folder:/.test(lower)) {
         // Files the owner left in Drop here or attached to a message.

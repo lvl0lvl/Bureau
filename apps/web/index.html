@@ -12,6 +12,19 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Bureau</title>
+    <script>
+      // The theme chosen on this device, set before anything is drawn. Colours as in src/lib/theme.ts.
+      (function () {
+        var ground = { graph: '#ffffff', night: '#0e1626', control: '#060500', stationery: '#f4f4f1' };
+        try {
+          var id = localStorage.getItem('bureau.theme');
+          if (id && ground[id]) {
+            document.documentElement.dataset.theme = id;
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', ground[id]);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

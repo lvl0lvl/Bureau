@@ -33,6 +33,9 @@ Every durable change bumps one global revision number. A client holds the last r
   Older rows page in over `GET /api/threads/:staffId?before=<seq>`.
 - Streaming text arrives as small `stream` messages appended to a row; the row itself is saved
   a few times a second. `live` messages carry what each person is doing right now.
+  The interface shows three states from them: working (a dot and a ring that pulse), waiting on
+  the owner (`waitingSlipId` set: red, still, naming the slip), and, once a turn ends badly, the
+  work log drawn in red ("Stopped after", "Ran into a problem after").
 - Commands are plain HTTP POSTs so they get a real acknowledgement.
 
 ## HTTP API
@@ -47,6 +50,7 @@ All under `/api`, JSON, cookie session after pairing.
 | `GET /threads/:staffId?before=&limit=` | `ThreadPage` |
 | `POST /threads/:staffId/messages` `{text, files?}` | The owner writes to a member of staff; `files` are ids from `PUT /uploads` |
 | `PUT /uploads?name=` (raw body) | Hold a file to attach to the next message; returns `{id,name,bytes}`. 25 MB each |
+| `PUT /drop?name=` (raw body) | Leave a file in the Drive folder's Drop here (the phone's camera button); returns `{name,bytes,watched}`. 25 MB. 409 when no Drive folder is set or it cannot be seen |
 | `POST /threads/:staffId/stop` | Stop the running turn |
 | `POST /threads/:staffId/new` | Start a fresh conversation (memory files stay) |
 | `POST /slips/:id/sign` `{text?}` | Sign; `text` when the draft was edited |
@@ -59,11 +63,14 @@ All under `/api`, JSON, cookie session after pairing.
 | `POST /due` / `PUT /due/:id` / `DELETE /due/:id` | Coming-due items |
 | `GET /duties/runs?from=&to=` | `DutyRun[]`: when scheduled duties run, per day, for the calendar |
 | `GET /books/tree`, `GET /books/file?path=`, `GET /books/history`, `POST /books/revert` `{sha}` | The Books |
-| `GET /library`, `GET /library/file?staff=&path=` | Files staff have produced |
+| `GET /artifacts?staff=`, `GET /artifacts/file?staff=&path=` | Finished work in staff libraries, grouped by version; one version's file |
+| `POST /artifacts/retire`, `/artifacts/drive`, `/artifacts/delete` | Take one off the list, copy a version to From staff in Drive, delete every version |
 | `PUT /settings` | Owner name, signature, undo seconds, slip checking, usage limit (`usageGuard`), compaction window (`compactAt`), whether Drop here is watched (`watchDrop`) |
 | `GET /drive`, `PUT /drive` `{folder}` | The office's Drive folder: `DriveStatus`; choose or clear it |
 | `GET /backup`, `POST /backup/key` `{replace?}`, `POST /backup/run` | `BackupStatus`; make the recovery key (returned once); back up now |
 | `GET /devices`, `POST /devices/code`, `DELETE /devices/:id` | Paired devices |
+| `GET /reach?fresh=` | `ReachInfo`: the Tailscale address other devices use, whether another app has taken it, whether a Mac app can be handed out |
+| `GET /mac/install?code=`, `GET /mac/Bureau.zip` | Open to anyone who can reach the office: the installer script for another Mac, and the app it downloads |
 | `GET /usage` | `UsageSummary` |
 | `GET /usage/plan?fresh=` | `PlanUsage`: the plan's week figure, the limit, and whether duties are held |
 | `GET /week` | `WeekReport`: the last seven days and the seven before, counted from the office's records |
@@ -89,6 +96,14 @@ Every tool call a member of staff makes passes one gate (`apps/server/src/author
    a slip showing the whole address, at every level. After public material only (web pages, a
    skills catalog), it becomes a slip only when the address is long (over 300 characters, or a
    query over 100). A web search never does. Signing these never leads to a promotion.
+6. A batch: with `request_batch` a person puts two or more calls of one action class, each
+   needing a signature, to the owner as one slip (`Slip.batch`), every call written out. The
+   owner may untick items (`POST /slips/:id/sign {items}`); the signed ones become grants on
+   that turn (`Running.grants`), and a call whose tool and input match one exactly
+   (`canonical`, keys in order) goes ahead once without another slip. Anything else, a changed
+   item or a second use, asks as usual; grants end with the turn. A batch is never signed from
+   a notification. While a person waits on a batch, a question or a review, the Desk shows them
+   waiting on the owner (`Turns.waitOnOwner`).
 
 The gate runs in a `PreToolUse` hook, so it applies to every call regardless of Claude Code's
 own permission rules. Calls that need a signature wait inside the SDK's permission callback.
@@ -128,7 +143,10 @@ source commit and a hash; plugins' connectors, hooks and commands are never inst
 Hiring (`hires.ts`) is a draft (`Hire`) that the chief of staff writes with three tools,
 `search_skills`, `read_skill` and `propose_hire`, during an ordinary conversation in the chief's
 own thread. Messages sent from the hiring desk carry a hint naming the open draft so the chief
-revises it instead of starting another. The owner can edit every field. Signing creates the
+revises it instead of starting another. The hiring desk and the chief's thread show the same
+conversation, so a draft can be made in either; while one is open, a bar at the top of the
+chief's thread opens it on the hiring desk (`/hire?draft=<id>`, which on a phone goes straight to
+the draft). The owner can edit every field. Signing creates the
 person (or updates an existing one) and installs the chosen skills. The chief cannot propose
 authority above "asks first" and cannot sign.
 
@@ -178,7 +196,12 @@ office holds no Google credential and does not depend on the Claude account's Dr
   the turn's outside material. `Backups` is refused to staff for reading and writing.
 - **Tools.** `drive_list`, `drive_move`, `drive_put` are office tools that are nevertheless
   classified as `drive.change`, so a move waits for a signature at "Asks first" and is logged at
-  "Acts". They cannot leave the folder, enter `Backups`, or write over an existing file.
+  "Acts". They cannot leave the folder, enter `Backups`, or write over an existing file, and
+  a link inside the folder does not carry them out of it: the part of a path that exists is
+  followed to where it really is before anything is read or written (`drive_move` moves a link
+  itself without following it). `drive_list` names every folder (ending in `/`) and says when one
+  is empty; a link, a Google Drive shortcut or a folder that cannot be read is listed with the
+  reason instead of being left out, so an unreadable folder never looks like an empty one.
   `drive_put` copies only from the person's own folder or the Books.
 - A shell command is still `scripts.run` whatever path it names; one that mentions the folder
   marks the turn as having read outside material.
@@ -298,6 +321,48 @@ of kind `lesson`: "A rule for Piper, from your edit". Nothing is learned unsigne
   again, and lesson slips have no checker, no notification and no row in the thread.
 - An edit is noticed by comparing what was signed with what was drafted (`_slipx.originalText`).
 
+## Artifacts
+
+Finished work staff keep for the owner is whatever they write in their own `library/` folder
+(`apps/server/src/artifacts.ts`). The files are the record; nothing is registered. A version mark
+in a name ("Cold open v3 - 2026-11-16.fountain", "budget_v2.csv", "notes (v4).md") makes files
+versions of one piece; a file with no mark is version 1. Links are not followed.
+
+- **Where they show.** In a person's details, under Open work: the newest drawn small (a true
+  thumbnail: the real view at twice the size, scaled down) and the next three as rows. Any of them
+  opens the viewer, which is as large as the window, with that person's list beside it (search
+  past six, retired ones folded at the end), a version menu, Save to Drive, and a menu with
+  Download, Retire and Delete. `/artifacts` (once the Library) is the same for the whole office,
+  by person. The viewer's address is `?artifact=<id>` (and `&staff=` on `/artifacts`), so the
+  back button closes it. On a phone the list and the document take the screen in turn.
+- **How each kind is drawn.** `.fountain` as a script (`apps/web/src/lib/fountain.ts`: title page,
+  scene headings, dialogue, transitions); `.md` as a document; `.csv`/`.tsv` as a table; images;
+  PDFs in the browser's viewer (opened on their own on a phone, where a framed PDF shows one
+  page); `.html` in a frame with `sandbox="allow-scripts"` and no same-origin, given a content
+  policy that allows inline scripts and the usual script CDNs but no network connections, forms
+  or base URL, so a chart runs and cannot reach the office or send anything anywhere. The file
+  endpoint hands a page over as text and everything else with `sandbox` in its own policy.
+  Spreadsheets and other files can only be downloaded or saved to Drive.
+- **What the owner does.** Save to Drive copies the version on screen to
+  `From staff/<name>/` and never over another file (a name taken gets " (2)"); the copy is
+  remembered, so the button then reads "In Drive". Retire hides a piece from the list and keeps
+  the files. Delete removes every version and any folder it leaves empty, after a confirmation;
+  copies in Drive and earlier backups keep theirs. Both are kept in private `_artifact` docs.
+- **Notes and edits.** Scripts, documents, text and tables can be marked up in the viewer
+  (`apps/web/src/components/ArtifactNotes.tsx`). Selecting words offers Add note (a floating
+  button on a computer, a bar at the bottom on a phone); a note keeps its quote and a little of the
+  text before it, so the passage is found again and marked with the CSS Custom Highlight API. Notes
+  collect in a column beside the page (a sheet on a phone) and go to the writer together: Send
+  makes one owner message with each passage quoted and the version it was on, and starts a turn
+  (`Artifacts.composeNotes`). A sent note reads "waiting" until a newer version by the writer
+  appears, then "answered"; the owner puts notes away. Edit opens the text of the version on
+  screen; saving writes the next version in the writer's `library/` (never over a file) and marks
+  it the owner's, which the version menu shows as "yours" and the next message to the writer
+  points at. Notes are private `_artifactNote` docs and go when the piece is deleted.
+- The list loads again when that person finishes a turn, after anything the owner does in the
+  viewer, and when the app comes back to the front. It always loads the first time, even while
+  someone is working.
+
 ## Ways in
 
 Three ways to get a document or a message to the office (`apps/server/src/intake.ts`):
@@ -306,12 +371,24 @@ Three ways to get a document or a message to the office (`apps/server/src/intake
   `PUT /uploads`; the message then names the ids. `Uploads.take` moves them into that person's
   own folder under `inbox/<day>/`, the prompt lists them, and the turn starts already marked as
   having read outside material ("Attached file ..."). Ten files of 25 MB each; held files that
-  are never sent are swept after a day.
+  are never sent are swept after a day. On a phone or tablet a camera button beside the plus
+  takes a photo and attaches it the same way. The phone's request bar on the Desk has a plus too
+  (inside the box): what is chosen there, from the photo library or Files, goes with the message
+  to the chief of staff. A photo the phone hands over as "image.jpg" is given a dated name.
 - **Drop here.** `DropWatch` looks in the Drive folder's Drop here once a minute. What was there
   the first time it looked is left alone; after that a file is handed to the chief of staff once
-  it looks the same on two looks running (so a copy in progress is not read half-written), twenty
-  at a time, with a turn of kind `drop` that is marked outside from the start. The chief deals
-  with it or hands it on and moves it under Filed. `Settings.watchDrop` switches it off.
+  it looks the same on two looks running (so a copy in progress is not read half-written), with a
+  turn of kind `drop` that is marked outside from the start. Files inside a folder wait until
+  nothing in that folder has changed for three looks, then go as one hand-off (a list past thirty
+  files is summed up), so a folder Google Drive is still filling makes one notice, not several.
+  The chief deals with it or hands it on and moves it under Filed. `Settings.watchDrop` switches
+  it off. A folder can be left alone (private docs of kind `_dropPark`): by the owner under
+  Drive folder in Settings (`POST /drop/park`), or by staff with `drop_leave_alone` when the owner
+  says so; nothing in it is handed over until it is watched again.
+  The camera button in the phone's request bar puts a photo there from the app (`PUT /drop`,
+  `leaveInDrop`): it is written under a dated name ("Photo 2026-11-15 15.42.07.jpg"), never over
+  a file already there, and the watch picks it up like any other. With no Drive folder to be
+  seen, the app attaches the photo to a message to the chief of staff instead.
 - **Forward a message.** A convention, not a mechanism: staff who may read mail are told that a
   message the owner forwards to their own address with `+office` is a request from the owner, with the
   forwarded part still outside material. It is picked up on the next pass through the inbox, so
@@ -375,11 +452,29 @@ as on the phone and posts to `/api/slips/:id/sign`.
 
 The app does not start or stop the server.
 
+**Another Mac.** Settings, Devices, "Add a Mac" makes a pairing code and shows one line for
+Terminal on the other Mac: `curl -fsSL '<address>/api/mac/install?code=<code>' | sh`. The script
+(`apps/server/src/mac.ts`) downloads `GET /api/mac/Bureau.zip`, puts the app in `/Applications`
+(or `~/Applications` without write access), sets `serverURL`, `pairCode` and `pairLabel` (the
+computer's name) in the app's defaults and opens it; the app's first page is
+`/pair?code=…&label=…`, and the code is removed from its defaults. Fetched with curl, the app is
+not marked as a download, so Gatekeeper does not hold back an app signed ad hoc. The copy handed
+out is the newer of `apps/mac/build/Bureau.app` and `/Applications/Bureau.app` (or
+`BUREAU_MAC_APP`), zipped with `ditto` once per build into `<office>/cache/`. The address comes
+from Tailscale (`apps/server/src/reach.ts` reads `tailscale status` and `tailscale serve status`,
+at most once a minute); `BUREAU_REACH` fixes it for demo offices and tests. The installer and the
+zip are open without pairing because the other Mac is not paired yet; neither holds anything of
+the office's.
+
 ## Running in the background and from other devices
 
 `scripts/service.sh` installs a launchd agent (`dev.bureau.server`) that starts the server at
 login and restarts it if it stops. `scripts/remote.sh` turns on Tailscale Serve, which gives the
 Mac an HTTPS address reachable only from the owner's own tailnet. Neither is run automatically.
+Tailscale Serve gives one app per port: another app that turns on Tailscale HTTPS on port 443
+(T3 Code does by default) takes the address from the office, and every other device loses it.
+Settings, Devices says so when it happens (`ReachInfo.taken`); the other app moves to another
+port (8443) and `pnpm remote:on` takes 443 back.
 
 The first time the service starts, macOS asks whether `node` may open the Documents folder (the
 code lives there) and, later, files managed by Google Drive. Until the owner answers, the server

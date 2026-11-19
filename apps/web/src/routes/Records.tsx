@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { BooksCommit, BooksEntry, LibraryFile } from '@shared/contract.ts';
+import type { BooksCommit, BooksEntry } from '@shared/contract.ts';
 import { Bubble, useLoad } from '../components/bits.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { bytes, when } from '../lib/format.ts';
@@ -94,54 +94,6 @@ export function Books() {
           ))}
         </aside>
       </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------- library
-
-export function Library() {
-  const t = useNow(60_000);
-  const staff = useStaffList();
-  const files = useLoad<LibraryFile[]>(() => api.library(), []);
-  const byStaff = useMemo(() => {
-    const m = new Map<string, LibraryFile[]>();
-    for (const f of files.data ?? []) m.set(f.staffId, [...(m.get(f.staffId) ?? []), f]);
-    for (const list of m.values()) list.sort((a, b) => b.modifiedAt - a.modifiedAt);
-    return m;
-  }, [files.data]);
-  const any = (files.data ?? []).length > 0;
-
-  return (
-    <div className="page">
-      <header>
-        <h1 className="page-title">Library</h1>
-        <p className="page-lede">Finished work that staff have saved for you: reports, drafts, spreadsheets, scripts. The files live in each person’s folder on your Mac.</p>
-      </header>
-      {files.error && <p className="empty">{files.error}</p>}
-      {files.data && !any && (
-        <p className="empty">
-          <b>Nothing saved yet.</b> When someone finishes a report or a document, it is kept here so you can open it later.
-        </p>
-      )}
-      {staff
-        .filter((s) => byStaff.has(s.id))
-        .map((s) => (
-          <section key={s.id} className="aside-block" style={{ maxWidth: 760 }}>
-            <div className="aside-head" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
-              <Bubble staff={s} size={24} working={false} />
-              <h2 className="aside-title">{s.name}</h2>
-            </div>
-            {byStaff.get(s.id)!.map((f) => (
-              <button key={f.path} className="file-row" onClick={() => void api.openLibraryFile(f)}>
-                <span className="file-name">{f.path}</span>
-                <span className="narrow">
-                  {bytes(f.size)}, {when(f.modifiedAt, t)}
-                </span>
-              </button>
-            ))}
-          </section>
-        ))}
     </div>
   );
 }

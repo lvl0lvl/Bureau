@@ -152,6 +152,15 @@ export class Store {
     return this.kind(kind).get(id);
   }
 
+  /** Read one private doc from the database itself, for docs another process may have written (`pnpm pair`). */
+  readPrivate<T = any>(kind: `_${string}`, id: string): T | undefined {
+    const row = this.db.prepare('SELECT body FROM docs WHERE kind = ? AND id = ? AND deleted = 0').get(kind, id) as { body: string } | undefined;
+    if (!row) return undefined;
+    const doc = JSON.parse(row.body) as T;
+    this.kind(kind).set(id, doc);
+    return doc;
+  }
+
   listPrivate<T = any>(kind: `_${string}`): T[] {
     return [...this.kind(kind).values()];
   }

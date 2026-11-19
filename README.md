@@ -33,6 +33,17 @@ Things to try in the demo: sign the slip on the Desk and watch the undo window, 
 member and ask for "an invoice", "a research note" or "run the backup script", ask someone to
 "pay" something (they cannot), and change a level on the Staff page.
 
+## Five looks
+
+The office looks the same on every device until you choose otherwise under Appearance in
+Settings. The choice is kept by the device, so a phone can be dark while the Mac stays white.
+
+| Graph paper | Night shift | Control room | Stationery |
+|---|---|---|---|
+| ![Graph paper](./docs/built/theme-graph-paper.png) | ![Night shift](./docs/built/theme-night-shift.png) | ![Control room](./docs/built/theme-control-room.png) | ![Stationery](./docs/built/theme-stationery.png) |
+
+The default, Drafting table, is the one in the other screenshots in `docs/built/`.
+
 ## Run the real office
 
 Needs Node 24 or newer, pnpm, and Claude Code installed and signed in (`claude` on your PATH).
@@ -115,6 +126,7 @@ folders inside it and leaves anything else you keep there alone:
 
 - **Drop here** — leave a receipt, a statement, a letter or a photo of a document for the office.
   Staff move each one to *Filed* when it has been dealt with, so what is left still needs doing.
+  On a phone, the camera button beside the request box takes a photo and leaves it here.
 - **From staff** — finished documents for you: a packet, a report, a spreadsheet.
 - **Filed** — original documents kept for the record, as `Filed/<year>/<kind>/`.
 - **Backups** — see below. Staff cannot read or change it.

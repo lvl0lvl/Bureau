@@ -1,0 +1,297 @@
+/* Themes. Each one restates the tokens in app.css and then adds the few rules that give it its
+   character. Three meanings hold in every theme and must stay distinct from each other and from
+   ordinary text: --blue is the owner (the signature, the owner's words, the main action), --red
+   is "needs you", --yellow is "working now". Staff stay circles and the owner stays a square.
+   The default theme, Drafting table, is app.css itself. The list for Settings is lib/theme.ts. */
+
+/* ========================================================================== */
+/* Graph paper: a white sheet with a dot grid, typewriter letters, square
+   corners, electric blue and lime.                                           */
+/* ========================================================================== */
+
+:root[data-theme='graph'] {
+  --ground: #ffffff;
+  --ink: #0a0a0a;
+  --graphite: #5b606b;
+  --rule: #d8dbe2;
+  --wash: #f2f4f8;
+  --blue: #1c3cff;
+  --red: #f0341f;
+  --red-wash: #ffefec;
+  --yellow: #c9f23f;
+  --sans: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  --narrow: var(--sans);
+  --mono: var(--sans);
+  --display-stretch: 100%;
+  --display-track: -0.05em;
+  --round: 0;
+  --pop-shadow: 4px 4px 0 var(--ink);
+  --ground-image: radial-gradient(circle, #dfe2e8 1px, transparent 1.3px);
+  --ground-size: 22px 22px;
+}
+[data-theme='graph'] body { letter-spacing: -0.03em; }
+[data-theme='graph'] .sidebar, [data-theme='graph'] .desk-aside, [data-theme='graph'] .thread-aside { background: var(--ground); }
+[data-theme='graph'] .wordmark-name { letter-spacing: -0.06em; }
+[data-theme='graph'] .nav-item { margin: 0 -10px; padding: 0 10px; font-size: 14px; }
+[data-theme='graph'] .nav-item::before { display: none; }
+[data-theme='graph'] .nav-item:hover { background: var(--yellow); color: var(--ink); }
+[data-theme='graph'] .nav-item.on { background: var(--blue); color: var(--on-blue); }
+[data-theme='graph'] .nav-item.on .nav-count { color: var(--on-blue); }
+[data-theme='graph'] .roster-row.on::before { background: var(--blue); }
+[data-theme='graph'] .page-title, [data-theme='graph'] .section-title, [data-theme='graph'] .panel-title, [data-theme='graph'] .aside-title { text-transform: uppercase; }
+[data-theme='graph'] .section-title, [data-theme='graph'] .panel-title { letter-spacing: -0.03em; }
+[data-theme='graph'] .brief-text { font-size: 34px; line-height: 40px; }
+[data-theme='graph'] .brief-text::after { content: '_'; color: var(--blue); }
+[data-theme='graph'] .btn { font-size: 13px; font-weight: 700; }
+[data-theme='graph'] .btn-line, [data-theme='graph'] .btn-soft { border: 1.5px solid var(--ink); background: var(--surface); }
+[data-theme='graph'] .btn-line:hover:not(:disabled), [data-theme='graph'] .btn-soft:hover:not(:disabled) { background: var(--yellow); }
+[data-theme='graph'] .input, [data-theme='graph'] .textarea, [data-theme='graph'] .select, [data-theme='graph'] .ask { border-color: var(--ink); background: var(--surface); }
+/* A slip is a sheet with a band along its top: blue and lime while it waits, grey once settled. */
+[data-theme='graph'] .slip { border-width: 1.5px; }
+[data-theme='graph'] .slip::before { content: ''; height: 9px; flex-shrink: 0; background: linear-gradient(90deg, var(--blue) calc(100% - 30px), var(--yellow) 0); border-bottom: 1.5px solid var(--ink); }
+[data-theme='graph'] .slip.is-signed::before, [data-theme='graph'] .slip.is-declined::before, [data-theme='graph'] .slip.is-expired::before { background: var(--rule); border-bottom-color: var(--rule); }
+[data-theme='graph'] .composer-box { box-shadow: 4px 4px 0 var(--blue); }
+[data-theme='graph'] .panel, [data-theme='graph'] .cal-top, [data-theme='graph'] .cal-nav { border-top-width: 2px; }
+[data-theme='graph'] .usage-bar { height: 8px; background: none; box-shadow: inset 0 0 0 1px var(--rule); }
+[data-theme='graph'] .usage-bar i { background: repeating-linear-gradient(90deg, var(--blue) 0 6px, transparent 6px 8px); }
+[data-theme='graph'] .usage-bar.over i { background: repeating-linear-gradient(90deg, var(--red) 0 6px, transparent 6px 8px); }
+[data-theme='graph'] .view-tab.on { border-bottom-color: var(--blue); }
+[data-theme='graph'] .cal-num, [data-theme='graph'] .phonebar-ask input, [data-theme='graph'] .phonebar-go, [data-theme='graph'] .phonebar-cam { border-radius: 0; }
+[data-theme='graph'] .msg { font-size: 15px; }
+[data-theme='graph'] .signoff-label, [data-theme='graph'] .signoff-who { letter-spacing: -0.05em; }
+[data-theme='graph'] .week-fig-num { letter-spacing: -0.06em; }
+
+/* ========================================================================== */
+/* Night shift: dark slate, frosted panels, round corners, a blue glow.       */
+/* ========================================================================== */
+
+:root[data-theme='night'] {
+  color-scheme: dark;
+  --ground: #0e1626;
+  --surface: rgba(255, 255, 255, .055);
+  --raised: #1b2639;
+  --bar: rgba(14, 22, 38, .78);
+  --gap: #141d2f;
+  --ink: #eef2f8;
+  --graphite: #9aa7bd;
+  --rule: rgba(154, 167, 189, .2);
+  --wash: rgba(255, 255, 255, .06);
+  --edge: rgba(226, 232, 240, .28);
+  --blue: #62adff;
+  --blue-fill: #0b70ea;
+  --on-ink: #0e1626;
+  --red: #ff8a3d;
+  --red-wash: rgba(249, 115, 22, .16);
+  --yellow: #25b6cc;
+  --on-yellow: #03222a;
+  --sans: 'Inter Variable', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --narrow: 'Inter Tight Variable', 'Inter Variable', system-ui, sans-serif;
+  --display-stretch: 100%;
+  --display-weight: 700;
+  --display-track: -0.035em;
+  --round: 2;
+  --scrim: rgba(3, 7, 16, .62);
+  --pop-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+  --ground-image:
+    radial-gradient(900px 620px at 88% -8%, rgba(11, 112, 234, .26), transparent 62%),
+    radial-gradient(760px 560px at -8% 108%, rgba(8, 145, 178, .2), transparent 62%),
+    linear-gradient(160deg, #0f182a, #111a2c 55%, #0b1220);
+}
+[data-theme='night'] .sidebar { background: rgba(255, 255, 255, .025); }
+[data-theme='night'] .nav-item { margin: 0 -10px; padding: 0 10px; border-radius: 10px; }
+[data-theme='night'] .nav-item::before { display: none; }
+[data-theme='night'] .nav-item:hover { background: rgba(255, 255, 255, .04); }
+[data-theme='night'] .nav-item.on { background: rgba(255, 255, 255, .09); }
+[data-theme='night'] .roster-row.on::before { background: var(--blue); border-radius: 50%; }
+[data-theme='night'] .btn, [data-theme='night'] .slip-actions .btn { border-radius: 999px; }
+[data-theme='night'] .btn-blue { box-shadow: 0 6px 20px rgba(11, 112, 234, .38); }
+[data-theme='night'] .btn-line, [data-theme='night'] .btn-soft { background: rgba(255, 255, 255, .04); }
+[data-theme='night'] .bubble { border-color: rgba(226, 232, 240, .6); background: rgba(255, 255, 255, .06); }
+[data-theme='night'] .bubble.working { background: var(--yellow); border-color: var(--yellow); }
+[data-theme='night'] .bubble.needs { border-color: var(--red); }
+[data-theme='night'] .bubble.colored { background: var(--c); border-color: color-mix(in srgb, var(--c) 55%, white); }
+/* No backdrop blur anywhere in this theme. Behind a panel there is only the page's own soft gradient,
+   which looks the same blurred or not, and an iPhone can draw a blurred panel late while the page
+   it sits in is scrolling, leaving blank patches on the Desk. */
+[data-theme='night'] .slip, [data-theme='night'] .composer-box, [data-theme='night'] .callout { box-shadow: 0 12px 32px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .07); }
+/* A slip that waits has the owner's blue in its edge. */
+[data-theme='night'] .slip { border-color: rgba(98, 173, 255, .5); }
+[data-theme='night'] .slip.is-signed, [data-theme='night'] .slip.is-declined, [data-theme='night'] .slip.is-expired { border-color: var(--rule); box-shadow: none; }
+[data-theme='night'] .slip-draft { background: rgba(4, 9, 20, .35); }
+[data-theme='night'] .usage-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); }
+[data-theme='night'] .usage-bar i { border-radius: 3px; background: linear-gradient(90deg, var(--blue-fill), var(--yellow)); }
+[data-theme='night'] .usage-bar.over i { background: var(--red); }
+[data-theme='night'] .pop, [data-theme='night'] .dialog, [data-theme='night'] .sheet { border-color: rgba(226, 232, 240, .14); }
+[data-theme='night'] .mx-corner, [data-theme='night'] .mx-label { background: #101829; }
+[data-theme='night'] .toast { box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+
+/* ========================================================================== */
+/* Control room: amber on black. What is the owner's is shown in reverse.     */
+/* ========================================================================== */
+
+:root[data-theme='control'] {
+  color-scheme: dark;
+  --ground: #060500;
+  --surface: #060500;
+  --raised: #0e0b02;
+  --bar: #060500;
+  --gap: #060500;
+  --ink: #f4b92f;
+  --graphite: #a8842a;
+  --rule: #54400f;
+  --wash: #181303;
+  --blue: #fff1c9;
+  --blue-fill: #f4b92f;
+  --on-blue: #060500;
+  --on-ink: #060500;
+  --red: #ff5a36;
+  --red-wash: #2a0d05;
+  --yellow: #f4b92f;
+  --on-yellow: #060500;
+  --sans: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --narrow: var(--sans);
+  --mono: var(--sans);
+  --display: 'VT323', 'IBM Plex Mono', monospace;
+  --display-stretch: 100%;
+  --display-weight: 400;
+  --display-track: 0;
+  --round: 0;
+  --scrim: rgba(0, 0, 0, .72);
+  --pop-shadow: 4px 4px 0 var(--rule);
+}
+[data-theme='control'] body { letter-spacing: -0.02em; text-shadow: 0 0 5px rgba(244, 185, 47, .28); }
+/* Faint scan lines over everything; they take no clicks. */
+[data-theme='control'] body::after { content: ''; position: fixed; inset: 0; z-index: 100; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .22) 0 1px, transparent 1px 3px); }
+[data-theme='control'] ::selection { background: var(--ink); color: var(--on-ink); }
+[data-theme='control'] .check input, [data-theme='control'] .cal-item input[type='checkbox'], [data-theme='control'] .skill-check { accent-color: var(--ink); }
+[data-theme='control'] .wordmark-name { font-family: var(--display); font-size: 30px; font-weight: 400; letter-spacing: 0; }
+[data-theme='control'] .brief-text { font-size: 50px; line-height: 44px; }
+[data-theme='control'] .page-title, [data-theme='control'] .pair h1 { font-size: 56px; line-height: 48px; }
+[data-theme='control'] .thread-name { font-family: var(--display); font-size: 36px; font-weight: 400; letter-spacing: 0; line-height: 30px; }
+[data-theme='control'] .week-fig-num, [data-theme='control'] .code, [data-theme='control'] .hire-lede { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
+[data-theme='control'] .hire-lede { font-size: 34px; }
+/* Headings are bars in reverse, like the title strip of a console panel. */
+[data-theme='control'] .section-title, [data-theme='control'] .panel-title, [data-theme='control'] .aside-title, [data-theme='control'] .dialog-head h2, [data-theme='control'] .sheet-head { background: var(--ink); color: var(--on-ink); padding: 2px 8px; font-size: 15px; font-weight: 500; letter-spacing: 0; text-shadow: none; }
+[data-theme='control'] .panel-title small { color: inherit !important; opacity: .75; }
+[data-theme='control'] .panel, [data-theme='control'] .cal-top, [data-theme='control'] .cal-nav { border-top: 0; padding-top: 0; }
+[data-theme='control'] .nav-item { margin: 0 -10px; padding: 0 10px; font-size: 14px; }
+[data-theme='control'] .nav-item::before { display: none; }
+[data-theme='control'] .nav-item.on, [data-theme='control'] .tab.on { background: var(--ink); color: var(--on-ink); text-shadow: none; }
+[data-theme='control'] .nav-item.on .nav-count, [data-theme='control'] .tab.on .nav-count { color: var(--on-ink); }
+[data-theme='control'] .btn { font-size: 13px; font-weight: 500; text-shadow: none; }
+[data-theme='control'] .btn-line:hover:not(:disabled), [data-theme='control'] .btn-soft:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); }
+[data-theme='control'] .btn-soft, [data-theme='control'] .input, [data-theme='control'] .textarea, [data-theme='control'] .select, [data-theme='control'] .ask { border-color: var(--graphite); }
+[data-theme='control'] .slip, [data-theme='control'] .composer-box, [data-theme='control'] .slip-page-signoff { border-width: 2px; }
+[data-theme='control'] .slip.is-signed, [data-theme='control'] .slip.is-declined, [data-theme='control'] .slip.is-expired { border-width: 1px; }
+/* The owner's words and marks are reverse video. */
+[data-theme='control'] .msg.mine { width: fit-content; max-width: 100%; padding: 3px 10px; background: var(--ink); color: var(--on-ink); font-weight: 500; text-shadow: none; }
+[data-theme='control'] .me, [data-theme='control'] .hl, [data-theme='control'] .bubble.working, [data-theme='control'] .toast, [data-theme='control'] .cal-cell.today .cal-num { text-shadow: none; }
+[data-theme='control'] .bubble.colored { border-color: color-mix(in srgb, var(--c) 45%, #f4b92f); }
+[data-theme='control'] .usage-bar { height: 10px; background: none; box-shadow: inset 0 0 0 1px var(--graphite); }
+[data-theme='control'] .usage-bar i { top: 2px; bottom: 2px; left: 2px; background: repeating-linear-gradient(90deg, var(--ink) 0 5px, transparent 5px 8px); }
+[data-theme='control'] .usage-bar.over i { background: repeating-linear-gradient(90deg, var(--red) 0 5px, transparent 5px 8px); }
+[data-theme='control'] .usage-bar b { top: -2px; bottom: -2px; }
+[data-theme='control'] .cal-num, [data-theme='control'] .phonebar-ask input, [data-theme='control'] .phonebar-go, [data-theme='control'] .phonebar-cam { border-radius: 0; }
+[data-theme='control'] .phonebar-ask input, [data-theme='control'] .phonebar-cam { border-width: 2px; }
+[data-theme='control'] .msg { font-size: 15px; }
+[data-theme='control'] .signoff-label, [data-theme='control'] .signoff-who { letter-spacing: -0.05em; }
+[data-theme='control'] .sig-text, [data-theme='control'] .sig-svg path { text-shadow: 0 0 8px rgba(255, 241, 201, .5); }
+
+/* ========================================================================== */
+/* Stationery: soft paper colours, dark outlines, round corners.              */
+/* ========================================================================== */
+
+:root[data-theme='stationery'] {
+  --ground: #f4f4f1;
+  --bar: #f4f4f1;
+  --ink: #1f1f27;
+  --graphite: #686876;
+  --rule: #d9d8e2;
+  --wash: #efedfb;
+  --blue: #1f8553;
+  --blue-fill: #7fc49a;
+  --on-blue: #1f1f27;
+  --red: #d63546;
+  --red-wash: #fde9ea;
+  --yellow: #fbd67a;
+  --lilac: #cbc6f7;
+  --cream: #fdeccb;
+  --sans: 'Nunito Variable', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --narrow: var(--sans);
+  --display-stretch: 100%;
+  --display-track: -0.025em;
+  --round: 2.2;
+  --scrim: rgba(31, 31, 39, .32);
+  --pop-shadow: 0 3px 0 var(--ink);
+  --ground-image:
+    radial-gradient(560px 560px at 100% 0, rgba(203, 198, 247, .55), transparent 70%),
+    radial-gradient(520px 520px at 0 100%, rgba(127, 196, 154, .32), transparent 70%);
+}
+[data-theme='stationery'] .sidebar { background: rgba(255, 255, 255, .55); }
+[data-theme='stationery'] .nav-item { margin: 0 -10px; padding: 0 10px; border: 1.5px solid transparent; border-radius: 12px; }
+[data-theme='stationery'] .nav-item::before { display: none; }
+[data-theme='stationery'] .nav-item.on { background: var(--cream); border-color: var(--ink); }
+[data-theme='stationery'] .roster-row.on::before { border-radius: 50%; }
+[data-theme='stationery'] .btn, [data-theme='stationery'] .slip-actions .btn, [data-theme='stationery'] .slip-undo .btn, [data-theme='stationery'] .signoff-cell.act .btn { border-radius: 999px; font-weight: 800; }
+[data-theme='stationery'] .btn-blue, [data-theme='stationery'] .btn-ink, [data-theme='stationery'] .btn-line { border: 1.5px solid var(--ink); box-shadow: 0 2px 0 var(--ink); }
+[data-theme='stationery'] .btn-blue:active:not(:disabled), [data-theme='stationery'] .btn-ink:active:not(:disabled), [data-theme='stationery'] .btn-line:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+[data-theme='stationery'] .btn-line { background: var(--surface); }
+[data-theme='stationery'] .btn-soft { border-width: 1.5px; background: var(--surface); }
+[data-theme='stationery'] .input, [data-theme='stationery'] .textarea, [data-theme='stationery'] .select, [data-theme='stationery'] .ask { border: 1.5px solid var(--ink); background: var(--surface); }
+[data-theme='stationery'] .me { border: 1.5px solid var(--ink); }
+[data-theme='stationery'] .me.s30 { background: var(--blue-fill); color: var(--on-blue); }
+[data-theme='stationery'] .slip { border-width: 1.5px; box-shadow: 0 3px 0 var(--ink); }
+[data-theme='stationery'] .slip.is-signed, [data-theme='stationery'] .slip.is-declined, [data-theme='stationery'] .slip.is-expired { box-shadow: none; }
+[data-theme='stationery'] .slip-draft { background: var(--cream); }
+/* The strip that holds the actions is the lilac foot of the card. */
+[data-theme='stationery'] .slip-actions, [data-theme='stationery'] .slip-undo { background: var(--lilac); border-top: 1.5px solid var(--ink); }
+[data-theme='stationery'] .slip-rule { color: var(--ink); }
+[data-theme='stationery'] .composer-box, [data-theme='stationery'] .phonebar-ask input { background: var(--lilac); }
+[data-theme='stationery'] .composer-box textarea::placeholder, [data-theme='stationery'] .phonebar-ask input::placeholder { color: #55526f; }
+[data-theme='stationery'] .composer-attach { color: var(--ink); }
+[data-theme='stationery'] .phonebar-go { border: 1.5px solid var(--ink); }
+[data-theme='stationery'] .hire-note, [data-theme='stationery'] .callout { background: var(--cream); }
+[data-theme='stationery'] .hl { border-radius: 6px; }
+[data-theme='stationery'] .usage-bar { height: 9px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ink); overflow: hidden; }
+[data-theme='stationery'] .usage-bar i { background: var(--blue-fill); border-right: 1.5px solid var(--ink); }
+[data-theme='stationery'] .usage-bar.over i { background: var(--red); }
+[data-theme='stationery'] .usage-bar b { top: 0; bottom: 0; }
+[data-theme='stationery'] .pop, [data-theme='stationery'] .dialog { border-width: 1.5px; }
+[data-theme='stationery'] .toast { border-radius: 999px; }
+[data-theme='stationery'] .msg.mine { font-weight: 700; }
+[data-theme='stationery'] .cal-chip { border-left-width: 4px; }
+
+@media (max-width: 859px) {
+  [data-theme='graph'] .brief-text { font-size: 26px; line-height: 31px; }
+  [data-theme='graph'] .tab, [data-theme='control'] .tab { font-size: 13px; padding: 0 5px; height: 28px; line-height: 28px; }
+  [data-theme='graph'] .tab.on { background: var(--blue); color: var(--on-blue); font-weight: 700; }
+  [data-theme='graph'] .tab.on .nav-count { color: var(--on-blue); }
+  [data-theme='graph'] .tab-me, [data-theme='control'] .tab-me { padding: 0; height: 36px; background: none !important; }
+  [data-theme='control'] .brief-text { font-size: 38px; line-height: 33px; }
+  [data-theme='control'] .page-title { font-size: 44px; line-height: 38px; }
+  [data-theme='control'] .tab.on { font-weight: 500; }
+  [data-theme='night'] .tab.on { color: var(--blue); }
+  /* The tabs sit in a green bar with the chosen one as a cream chip. */
+  /* The monospaced faces are wider, so the strip above the composer is set a little smaller. */
+  [data-theme='graph'] .usage-strip, [data-theme='control'] .usage-strip { gap: 8px; }
+  [data-theme='graph'] .usage-strip .usage-label, [data-theme='graph'] .usage-strip .usage-note,
+  [data-theme='control'] .usage-strip .usage-label, [data-theme='control'] .usage-strip .usage-note { font-size: 11px; letter-spacing: -0.03em; }
+  [data-theme='graph'] .usage-strip .usage-pct { font-size: 13px; }
+  /* With the camera beside it the box is narrower: the prompt is set smaller so it still fits. */
+  [data-theme='graph'] .phonebar-ask input::placeholder, [data-theme='control'] .phonebar-ask input::placeholder { font-size: 14px; }
+  [data-theme='control'] .usage-strip .usage-pct { font-size: 16px; }
+  [data-theme='stationery'] .tabs { height: 46px; padding: 0 6px; background: var(--blue-fill); border: 1.5px solid var(--ink); border-radius: 16px; }
+  [data-theme='stationery'] .tab { color: var(--ink); font-weight: 700; padding: 0 6px; height: 30px; line-height: 27px; border: 1.5px solid transparent; border-radius: 10px; }
+  [data-theme='stationery'] .tab.on { background: var(--cream); border-color: var(--ink); }
+  [data-theme='stationery'] .tab .nav-count { color: var(--ink); }
+  [data-theme='stationery'] .tab-me { border: 0; padding: 0; background: none !important; }
+  [data-theme='stationery'] .tab-me .me { background: var(--surface); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-theme='night'] { --surface: #172134; --bar: #0e1626; }
+}
+
+/* The owner stays a square where corners are otherwise very round. */
+[data-theme='night'] .me, [data-theme='stationery'] .me { border-radius: 6px; }
+[data-theme='night'] .me.s30, [data-theme='stationery'] .me.s30 { border-radius: 8px; }

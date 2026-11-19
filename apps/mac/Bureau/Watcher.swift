@@ -136,7 +136,8 @@ final class Watcher {
             let read = (slip["origin"] as? [String: Any])?["read"] as? [Any] ?? []
             return PendingSlip(
                 id: id, title: slip["title"] as? String ?? "A slip", staffName: staff[slip["staffId"] as? String ?? ""] ?? "Your staff",
-                kind: kind, signable: kind == "action" && read.isEmpty, createdAt: slip["createdAt"] as? Double ?? 0)
+                // A batch is read item by item first, so it is never signed from a notification.
+                kind: kind, signable: kind == "action" && read.isEmpty && slip["batch"] == nil, createdAt: slip["createdAt"] as? Double ?? 0)
         }.sorted { $0.createdAt < $1.createdAt }
 
         // What was already waiting when we connected is not news.

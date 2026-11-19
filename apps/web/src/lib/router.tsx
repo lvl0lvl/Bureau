@@ -35,7 +35,7 @@ export function useHash(): string {
 }
 
 export interface Route {
-  name: 'desk' | 'thread' | 'hire' | 'work' | 'staff' | 'books' | 'calendar' | 'library' | 'week' | 'settings' | 'pair' | 'missing';
+  name: 'desk' | 'thread' | 'hire' | 'work' | 'staff' | 'books' | 'calendar' | 'artifacts' | 'week' | 'settings' | 'pair' | 'missing';
   staffId?: string;
 }
 
@@ -48,7 +48,7 @@ export function parseRoute(path: string): Route {
   if (p === '/staff') return { name: 'staff' };
   if (p === '/books') return { name: 'books' };
   if (p === '/calendar') return { name: 'calendar' };
-  if (p === '/library') return { name: 'library' };
+  if (p === '/artifacts' || p === '/library') return { name: 'artifacts' };
   if (p === '/week') return { name: 'week' };
   if (p === '/settings') return { name: 'settings' };
   if (p === '/pair') return { name: 'pair' };

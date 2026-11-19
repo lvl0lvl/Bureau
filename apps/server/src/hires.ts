@@ -127,7 +127,7 @@ export class Hires {
       hire,
       message: [
         `${cur ? 'Revised' : 'Saved'} the draft ${hire.id}: ${hire.name}, ${hire.role}, with ${taking} skill${taking === 1 ? '' : 's'} to install.`,
-        'The owner sees it beside this conversation and can change anything in it. Nothing exists until the owner signs it; you cannot sign it.',
+        'The owner opens it on the hiring desk, from the bar at the top of your conversation or from the Desk, and can change anything in it before signing. Nothing exists until the owner signs it; you cannot sign it.',
         `To revise it, call propose_hire again with hire_id "${hire.id}" and only the parts that change.`,
         unknown.length ? `Not in the catalog, so left out: ${unknown.join(', ')}. Use the ids exactly as search_skills gives them.` : '',
       ].filter(Boolean).join(' '),

@@ -27,3 +27,7 @@ test('connected apps are switched on only when asked for', () => {
   assert.equal(childEnv(null, { base: shell }).ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
   assert.equal(childEnv(null, { base: shell, connectors: true }).ENABLE_CLAUDEAI_MCP_SERVERS, '1');
 });
+
+test('staff turns run without Claude Code’s own memory, so notes/memory.md is the only one', () => {
+  assert.equal(childEnv(null, { base: {} }).CLAUDE_CODE_DISABLE_AUTO_MEMORY, '1');
+});

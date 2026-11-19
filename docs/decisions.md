@@ -96,7 +96,9 @@ Server, web interface and iPhone shell exist and run. Choices made while buildin
   default sign-in unless `BUREAU_CLAUDE_CONFIG_DIR` is set, and a staff member's own folder
   still wins over both.
 - **Dictation instead of realtime voice.** The phone's request bar uses the browser's speech
-  recognition. No voice model is involved.
+  recognition. No voice model is involved. Where the browser refuses (an iPhone can for a page
+  opened from the Home Screen), the bar says so once and shows Send; the keyboard's own
+  microphone still dictates into the box.
 
 - **A native Mac app as well as the web app** (`apps/mac`), added the same day at the owner's
   request. It is a client only: it does not start the office, so the office can keep running as
@@ -210,7 +212,7 @@ Server, web interface and iPhone shell exist and run. Choices made while buildin
   one they cannot flatter. `/week` counts from the usage log, the done log and the slips. It is
   the page to read before raising or lowering what someone may do.
 
-Not built yet: iMessage, 1Password, dark mode, search within a thread, a share sheet on the
+Not built yet: iMessage, 1Password, search within a thread, a share sheet on the
 iPhone, updating an installed skill to a newer catalog version, and plugins' connectors.
 
 ## 2026-11-14
@@ -277,3 +279,25 @@ hourly in code.
 - **Remote access finds Tailscale inside the Mac app**, so a `tailscale` command on the PATH is
   no longer a setup step. The service's "is it up" check asks for the page, not `/api/session`,
   which was creating a local device each time.
+
+### Themes: five looks, chosen per device
+
+- **The owner asked for switchable themes** and supplied four reference pictures. Each became a
+  theme beside the drafting table: Graph paper, Night shift, Control room, Stationery. The list
+  and the rules are in `docs/design/brief.md`.
+- **Per device, not per office.** The choice is kept in the browser (`localStorage`), not in
+  Settings on the server. A dark theme that suits a phone at night should not turn the Mac
+  dark, and a choice that is only about looks does not belong in the office's records. The
+  cost: a new device starts on the default.
+- **A theme is tokens, not a second stylesheet.** The first build had white, black and Archivo
+  written into rules directly. Those became tokens once, so each theme is a short block of
+  overrides and the default looks exactly as before. Layout and copy are the same in all five.
+- **The three meanings survive every theme.** The owner, "needs you" and "working now" can be
+  told apart at a glance in each one. Where copy named a color (the calendar's key, a hint under bubble colors) it
+  now shows the mark or describes it without the color.
+- **Fonts are bundled, not fetched.** The five extra faces come from Fontsource packages (all
+  under the SIL Open Font License) and are loaded only when a theme that uses them is on
+  screen, so the office still makes no request to a font service.
+- **Not verified on a real iPhone:** the color of the status bar above a dark theme when the
+  office is opened from the Home Screen. The page sets `theme-color` before the first paint;
+  iOS decides what to do with it.

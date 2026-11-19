@@ -41,6 +41,10 @@ export function childEnv(
   const dir = configDir || opts.officeConfigDir || null;
   if (dir) env.CLAUDE_CONFIG_DIR = expandHome(dir);
   env.CLAUDE_AGENT_SDK_CLIENT_APP = 'bureau/0.1';
+  // Staff keep their memory in notes/memory.md in their own folder. Claude Code's own memory
+  // folder is outside it, so the gate refuses writes there and staff concluded they could not
+  // save anything at all.
+  env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
   // The apps the owner connected to their Claude account (Gmail, Calendar, Drive and so on) are
   // off by default for programs that drive Claude Code. This is Claude Code's own switch for them.
   if (opts.connectors) env.ENABLE_CLAUDEAI_MCP_SERVERS = '1';

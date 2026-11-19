@@ -24,8 +24,13 @@ Xcode is needed for the build. The script finds it in `/Applications`, `~/Applic
 `~/Downloads`.
 
 On first launch the app looks for an office on this Mac (`http://localhost:8787`) and opens it.
-If there is none it asks for an address, which is how a second Mac connects: enter the address
-`pnpm remote:on` printed, then a pairing code.
+If there is none it asks for an address: enter the address `pnpm remote:on` printed, then a
+pairing code.
+
+The easier way onto a second Mac is Settings, Devices, "Add a Mac" in the office: it shows one
+line to paste into Terminal on the other Mac, which downloads this app from the office, puts it in
+Applications and opens it already paired. The office hands out the newest build it has, so run
+`pnpm mac:build` on the office Mac after changing the app.
 
 The app does not start the office. Start it with `pnpm start`, or keep it running with
 `pnpm service:install`.
@@ -61,7 +66,8 @@ Tested on macOS 14.6 against the demo office:
 
 Not tested: an actual Touch ID or password match (it needs a person), notification banners and
 their Sign button (macOS had not been told to allow notifications for Bureau when this was
-written), and connecting to an office on another Mac.
+written), and a real second Mac (the install and pairing were walked against a demo office reached over
+Tailscale's address rather than loopback).
 
 ## Walking the app from the command line
 

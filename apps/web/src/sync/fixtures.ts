@@ -4,7 +4,7 @@
  * and it simulates signing, undo, declining, questions, messages and authority changes.
  */
 import { ACTION_CLASSES, PROTOCOL, usageGuard } from '@shared/contract.ts';
-import type { BackupStatus, BooksCommit, BooksEntry, Brief, CatalogSkill, CatalogSkillDetail, CatalogSource, Change, ClientMsg, Device, DoneItem, DriveStatus, DueItem, Duty, DutyRun, Hire, HireSkill, InstalledSkill, Level, LibraryFile, Live, Row, RowBody, ServerMsg, Settings, Slip, Snapshot, Staff, Step, WorkItem } from '@shared/contract.ts';
+import type { ArtifactNote, ArtifactVersion, BackupStatus, BooksCommit, BooksEntry, Brief, CatalogSkill, CatalogSkillDetail, CatalogSource, Change, ClientMsg, Device, DoneItem, DriveStatus, DueItem, Duty, DutyRun, Hire, HireSkill, InstalledSkill, Level, LibraryFile, Live, Row, RowBody, ServerMsg, Settings, Slip, Snapshot, Staff, Step, WorkItem } from '@shared/contract.ts';
 import { HttpError, type SocketHandlers, type Transport } from './transport.ts';
 
 const MIN = 60_000;
@@ -104,6 +104,19 @@ export function createFixtures(query: URLSearchParams): Transport {
     origin: { trigger: 'Duty: Appointments and renewals', read: [] }, actionClass: 'calendar.write',
     check: { by: 'wren', state: 'ok', at: at(8, 12) }, status: 'signed', createdAt: at(8, 10), decidedAt: at(8, 41),
   });
+
+  // A set of calendar entries put to the owner for one signature. Shown with ?batch, so the
+  // usual Desk keeps its three slips.
+  if (query.has('batch')) {
+    const classes = ['Sat 5 Dec', 'Sat 19 Dec', 'Sat 9 Jan', 'Sat 16 Jan', 'Sat 23 Jan', 'Sat 30 Jan', 'Sat 13 Feb'];
+    addSlip({
+      id: 's_season', rev: 6, kind: 'action', staffId: 'hearth', title: 'Add the winter pottery course to your calendar, 7 classes',
+      detail: 'From the course schedule the studio sent on Tuesday. Each class is 10:00 to 12:00 at the Kiln Street studio, room 2.',
+      origin: { trigger: 'You asked at 8:40 am', read: ['Mail from classes@kilnstreet.example'] }, actionClass: 'calendar.write',
+      batch: { classId: 'calendar.write', items: classes.map((g) => ({ label: `${g}, 10:00: Wheel throwing, room 2`, title: `Put on your calendar: Pottery class, ${g}` })) },
+      check: { by: 'wren', state: 'ok', at: at(8, 44) }, status: 'pending', createdAt: at(8, 43),
+    });
+  }
 
   const duties = new Map<string, Duty>();
   const duty = (id: string, staffId: string, title: string, cadence: string, cron: string | null, prompt: string, extra: Partial<Duty> = {}) =>
@@ -281,9 +294,15 @@ export function createFixtures(query: URLSearchParams): Transport {
     waiters.delete(slip.id);
   }
 
-  function sign(id: string, text?: string): void {
+  function sign(id: string, text?: string, items?: number[]): void {
     const slip = slips.get(id);
     if (!slip || slip.status !== 'pending') throw new HttpError(409, 'That slip is no longer waiting.');
+    if (slip.batch) {
+      const approved = items ?? slip.batch.items.map((_, i) => i);
+      if (!approved.length) throw new HttpError(409, 'Tick at least one item, or decline the whole set.');
+      slip.batch = { ...slip.batch, approved };
+      if (approved.length < slip.batch.items.length) slip.edited = true;
+    }
     if (text !== undefined && slip.draft && text !== slip.draft.text) {
       slip.draft.text = text;
       slip.edited = true;
@@ -407,7 +426,7 @@ export function createFixtures(query: URLSearchParams): Transport {
       if (token.stopped) return finish('stopped');
       setLive({ staffId, running: true, activity: 'Finishing up', since: start, steps: body.steps.length, waitingSlipId: null, queued: 0 });
       finish('done');
-      await streamReply(staffId, wantsQuestion ? (ok ? `Understood: ${slip.answer}. I will take it from here and tell you when it is done.` : 'No answer yet, so I have left both quotes open.') : ok ? 'Sent. I filed a copy under Correspondence.' : 'Understood, I have not sent it. The draft is in my Library if you want it later.', token);
+      await streamReply(staffId, wantsQuestion ? (ok ? `Understood: ${slip.answer}. I will take it from here and tell you when it is done.` : 'No answer yet, so I have left both quotes open.') : ok ? 'Sent. I filed a copy under Correspondence.' : 'Understood, I have not sent it. The draft is with my artifacts if you want it later.', token);
       return;
     }
 
@@ -446,6 +465,37 @@ export function createFixtures(query: URLSearchParams): Transport {
     { staffId: 'hearth', path: 'insurance-quotes.md', size: 1830, modifiedAt: at(5, 55) },
     { staffId: 'forge', path: 'scripts/nightly-backup.py', size: 1210, modifiedAt: at(11, 0, -9) },
   ];
+  const retired = new Map<string, number>();
+  const gone = new Set<string>();
+  /** Text for the sample files that are read in the viewer, and versions the owner saved. */
+  const libraryText: Record<string, string> = {
+    'tally:october-summary.md': `# October in brief
+
+Income for the month came to **$18,420**, up from $15,960 in September. Two invoices are still open: 0041 to Northbeam ($3,200, due 14 November) and 0042 to Halvorsen ($1,150, sent this morning).
+
+## Spending
+
+Spending was $6,310. The largest items were the studio rent ($2,400), the new laptop ($1,890, which I have put under equipment rather than supplies), and software subscriptions ($412).
+
+Three subscriptions were not used in October: the stock photo plan, the second design seat, and the transcription service. Together they cost $96 a month.
+
+## Set aside for tax
+
+I moved $3,700 to the tax account, which keeps the quarter on track for the January estimate.
+
+## For you to decide
+
+- Whether to cancel the three unused subscriptions.
+- Whether the laptop should be depreciated or expensed this year.
+`,
+  };
+  const ownerVersions = new Map<string, ArtifactVersion[]>();
+  let artifactNotes: ArtifactNote[] = query.has('nonotes')
+    ? []
+    : [
+        { id: 'n1', staffId: 'tally', artifactId: 'october-summary.md', path: 'october-summary.md', quote: 'which I have put under equipment rather than supplies', before: 'the new laptop ($1,890, ', text: 'Good. Keep it there, and add the serial number to the asset list.', at: at(9, 10), sentAt: null, doneAt: null },
+        { id: 'n2', staffId: 'tally', artifactId: 'october-summary.md', path: 'october-summary.md', quote: 'the stock photo plan, the second design seat, and the transcription service', before: 'Three subscriptions were not used in October: ', text: 'Cancel the photo plan and the design seat. Keep transcription, I need it in December.', at: at(9, 12), sentAt: null, doneAt: null },
+      ];
   const devices: Device[] = [
     { id: 'dev1', rev: 1, label: 'This browser', createdAt: at(9, 0, -20), lastSeenAt: Date.now(), current: true },
     { id: 'dev2', rev: 1, label: 'iPhone', createdAt: at(9, 30, -18), lastSeenAt: at(7, 45) },
@@ -474,7 +524,12 @@ export function createFixtures(query: URLSearchParams): Transport {
       { name: 'Backups', purpose: 'Encrypted copies of the whole office. Staff cannot touch these.', files: driveFound() ? backup.kept : 0 },
     ],
     mounts: query.has('nodrive') ? [] : [MOUNT],
+    drop: driveFound() ? dropFolders.map((f) => ({ ...f, parked: f.parked ? { ...f.parked } : null })) : [],
   });
+  const dropFolders: { name: string; files: number; parked: { at: number; by: string } | null }[] = [
+    { name: 'tax letters 2025', files: 6, parked: null },
+    { name: 'house plans', files: 14, parked: { at: Date.now() - 2 * 1440 * MIN, by: 'Wren' } },
+  ];
   const backupStatus = (): BackupStatus => {
     const problem = !settings.driveFolder ? 'Choose the office’s Drive folder first.' : !driveFound() ? 'The office’s Drive folder cannot be seen. Google Drive may not be running on this Mac.' : !backup.keyCreatedAt ? 'Create a recovery key to switch backups on.' : null;
     return {
@@ -603,7 +658,7 @@ export function createFixtures(query: URLSearchParams): Transport {
       job('job-m31', 'Find a second quote for the office insurance', null, 'wren', at(8, 5), { detail: 'The renewal is due on 1 December. Corbel quoted $1,840.' }),
       job('job-x9a', 'Reply to the supplier about the late delivery', 'piper', 'piper', at(8, 20), { read: ['Mail in your inbox'], detail: 'They offered a 10% credit. Draft a reply accepting it.' }),
       job('job-b02', 'Compare three payroll providers', 'atlas', 'wren', at(10, 0, -2), {
-        status: 'closed', ready: false, result: 'Gusto is the best fit at $46 a month plus $6 a person. The comparison is in the Library.', closedAt: at(15, 30, -1), updatedAt: at(15, 30, -1),
+        status: 'closed', ready: false, result: 'Gusto is the best fit at $46 a month plus $6 a person. The comparison is with my artifacts.', closedAt: at(15, 30, -1), updatedAt: at(15, 30, -1),
       }),
     ]) work.set(w.id, w);
   }
@@ -693,7 +748,7 @@ export function createFixtures(query: URLSearchParams): Transport {
       emitRow(pushRow(p[1]!, { type: 'note', text: 'A fresh conversation starts here. Notes and files are kept.', tone: 'info' }));
       return { ok: true };
     }
-    if (is('POST', 'slips', null, 'sign')) return sign(p[1]!, body?.text), { ok: true };
+    if (is('POST', 'slips', null, 'sign')) return sign(p[1]!, body?.text, body?.items), { ok: true };
     if (is('POST', 'slips', null, 'undo')) {
       const slip = slips.get(p[1]!);
       if (!slip || slip.status !== 'signing') throw new HttpError(409, 'Too late to undo that one.');
@@ -983,9 +1038,71 @@ export function createFixtures(query: URLSearchParams): Transport {
       history = [{ sha: Math.random().toString(16).slice(2, 9), at: Date.now(), author: 'Robin', subject: `Undo: ${c.subject}`, files: c.files }, ...history];
       return { ok: true };
     }
-    if (is('GET', 'library')) return library;
-    if (is('GET', 'library', 'file')) return { text: `${q.get('path')}\n\nThis is sample content. With the real server this opens the file ${staff.get(q.get('staff') || '')?.name ?? 'someone'} saved.` };
+    if (is('GET', 'artifacts')) {
+      const who = q.get('staff');
+      return {
+        artifacts: library
+          .filter((f) => !who || f.staffId === who)
+          .filter((f) => !gone.has(`${f.staffId}:${f.path}`))
+          .map((f) => {
+            const ext = f.path.split('.').pop()!.toLowerCase();
+            const kind = ({ md: 'document', pdf: 'pdf', py: 'text', csv: 'table', fountain: 'script', html: 'page' } as Record<string, string>)[ext] ?? 'file';
+            const slash = f.path.lastIndexOf('/');
+            const mine = ownerVersions.get(`${f.staffId}:${f.path}`) ?? [];
+            const versions: ArtifactVersion[] = [...mine, { path: f.path, size: f.size, modifiedAt: f.modifiedAt, label: mine.length ? 'Version 1' : 'Only version' }];
+            return { id: f.path, staffId: f.staffId, title: f.path.slice(slash + 1, -(ext.length + 1)).replace(/[-_]/g, ' '), folder: slash > 0 ? f.path.slice(0, slash) : '', kind, ext, versions, modifiedAt: versions[0]!.modifiedAt, retiredAt: retired.get(`${f.staffId}:${f.path}`) ?? null, drive: [] };
+          }),
+      };
+    }
+    if (is('GET', 'artifacts', 'notes')) return { notes: artifactNotes.filter((n) => n.staffId === q.get('staff') && n.artifactId === q.get('id')) };
+    if (is('POST', 'artifacts', 'notes')) {
+      const note: ArtifactNote = { id: `n${Date.now()}`, staffId: body.staff, artifactId: body.id, path: body.path, quote: body.quote ?? '', before: body.before ?? '', text: body.text, at: Date.now(), sentAt: null, doneAt: null };
+      artifactNotes.push(note);
+      return { note };
+    }
+    if (is('POST', 'artifacts', 'notes', 'send')) {
+      const sent = artifactNotes.filter((n) => n.staffId === body?.staff && n.artifactId === body?.id && !n.sentAt);
+      for (const n of sent) n.sentAt = Date.now();
+      return { notes: sent.length };
+    }
+    if (is('POST', 'artifacts', 'notes', null, 'change')) {
+      const n = artifactNotes.find((x) => x.id === p[2]);
+      if (!n) throw new HttpError(404, 'No such note.');
+      if (typeof body?.text === 'string') n.text = body.text;
+      if (body?.done !== undefined) n.doneAt = body.done ? Date.now() : null;
+      return { note: n };
+    }
+    if (is('DELETE', 'artifacts', 'notes', null)) {
+      artifactNotes = artifactNotes.filter((x) => x.id !== p[2]);
+      return { ok: true };
+    }
+    if (is('POST', 'artifacts', 'edit')) {
+      const key = `${body?.staff}:${body?.id}`;
+      const mine = ownerVersions.get(key) ?? [];
+      const dot = String(body.id).lastIndexOf('.');
+      const path = `${String(body.id).slice(0, dot)} v${mine.length + 2}${String(body.id).slice(dot)}`;
+      libraryText[`${body.staff}:${path}`] = body.text;
+      ownerVersions.set(key, [{ path, size: body.text.length, modifiedAt: Date.now(), label: `Version ${mine.length + 2}`, byOwner: true }, ...mine]);
+      return { path };
+    }
+    if (is('GET', 'artifacts', 'file') && libraryText[`${q.get('staff')}:${q.get('path')}`] !== undefined) return { text: libraryText[`${q.get('staff')}:${q.get('path')}`] };
+    if (is('GET', 'artifacts', 'file')) return { text: `# ${q.get('path')}\n\nThis is sample content. With the real server this shows the file ${staff.get(q.get('staff') || '')?.name ?? 'someone'} saved.` };
+    if (is('POST', 'artifacts', 'retire')) {
+      if (body?.retired === false) retired.delete(`${body.staff}:${body.id}`);
+      else retired.set(`${body?.staff}:${body?.id}`, Date.now());
+      return { ok: true };
+    }
+    if (is('POST', 'artifacts', 'drive')) return { to: `From staff/${staff.get(body?.staff)?.name ?? 'Staff'}/${String(body?.id).split('/').pop()}`, already: false };
+    if (is('POST', 'artifacts', 'delete')) {
+      gone.add(`${body?.staff}:${body?.id}`);
+      return { files: 1 };
+    }
     if (is('GET', 'drive')) return driveStatus();
+    if (is('POST', 'drop', 'park')) {
+      const f = dropFolders.find((x) => x.name === body?.folder);
+      if (f) f.parked = body?.on === false ? null : { at: Date.now(), by: settings.ownerName };
+      return { drive: driveStatus() };
+    }
     if (is('PUT', 'drive')) {
       const given = typeof body?.folder === 'string' ? body.folder.trim().replace(/\/+$/, '') : '';
       settings.driveFolder = given || null;
@@ -1045,6 +1162,7 @@ export function createFixtures(query: URLSearchParams): Transport {
       const code = Array.from({ length: 8 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join('');
       return { code, url: `${location.origin}/pair?code=${code}`, expiresAt: Date.now() + 10 * MIN };
     }
+    if (is('GET', 'reach')) return { address: 'https://office-mac.example.ts.net', tailscale: true, taken: null, macApp: true };
     if (is('DELETE', 'devices', null)) {
       const i = devices.findIndex((d) => d.id === p[1]);
       if (i >= 0) devices.splice(i, 1);

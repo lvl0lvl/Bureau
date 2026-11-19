@@ -61,8 +61,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             watcher.stop()
             return
         }
-        office.load(server)
+        office.load(Self.firstPage(server))
         watcher.start(server)
+    }
+
+    /// The installer run on another Mac leaves a one-time pairing code; the page uses it at once.
+    private static func firstPage(_ server: URL) -> URL {
+        let defaults = UserDefaults.standard
+        guard let code = defaults.string(forKey: "pairCode"), !code.isEmpty else { return server }
+        let label = defaults.string(forKey: "pairLabel") ?? ""
+        defaults.removeObject(forKey: "pairCode")
+        defaults.removeObject(forKey: "pairLabel")
+        var parts = URLComponents(url: server.appendingPathComponent("pair"), resolvingAgainstBaseURL: false)
+        parts?.queryItems = [URLQueryItem(name: "code", value: code)] + (label.isEmpty ? [] : [URLQueryItem(name: "label", value: label)])
+        return parts?.url ?? server
     }
 
     // MARK: Window

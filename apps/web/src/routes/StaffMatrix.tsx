@@ -136,8 +136,8 @@ export function StaffMatrix() {
       })}
 
       <p className="phone-only muted" style={{ fontSize: 14 }}>
-        <Link to="/library" className="link" style={{ color: 'var(--ink)' }}>
-          Library
+        <Link to="/artifacts" className="link" style={{ color: 'var(--ink)' }}>
+          Artifacts
         </Link>
         {'  '}
         <Link to="/settings" className="link" style={{ color: 'var(--ink)', marginLeft: 16 }}>

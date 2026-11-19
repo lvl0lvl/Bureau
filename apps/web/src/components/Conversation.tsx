@@ -2,9 +2,10 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent,
 import { VList, type VListHandle } from 'virtua';
 import type { Row, Staff, Step } from '@shared/contract.ts';
 import { bytes, clock, dur, durWords, isoDay, plural, shortDate } from '../lib/format.ts';
+import { hasTouch, namedFiles, namedPhotos } from '../lib/photo.ts';
 import { api, closeThread, loadOlder, openThread } from '../sync/client.ts';
 import { toast, useIsPhone, useNow, useStore } from '../sync/store.ts';
-import { Bubble, Check, Chevron, Me, PlusIcon } from './bits.tsx';
+import { Bubble, CameraIcon, Check, Chevron, LiveMark, Me, PlusIcon, waitWords } from './bits.tsx';
 import { Markdown } from './Markdown.tsx';
 import { SlipCard } from './Slip.tsx';
 
@@ -62,7 +63,7 @@ function WorkLog({ body }: { body: Extract<Row['body'], { type: 'work' }> }) {
           ? `Ran into a problem after ${durWords(span)}`
           : `Worked for ${durWords(span)}`;
   return (
-    <div className={`worklog${open ? '' : ' shut'}`}>
+    <div className={`worklog${open ? '' : ' shut'}${body.status === 'error' || body.status === 'stopped' ? ' bad' : ''}`}>
       <button className="worklog-head" onClick={() => setUserOpen(!open)} aria-expanded={open}>
         {head}
         {real > 0 ? `, ${plural(real, 'step')}` : ''}
@@ -134,17 +135,26 @@ const RowView = memo(function RowView({ row, staff }: { row: Row; staff: Staff }
   );
 });
 
+/**
+ * The last line while someone is at work: a pulsing mark and what they are doing, with how long
+ * it has been going on. Stopped on the owner's signature, it says so in red instead, so a wait
+ * is never mistaken for a hang.
+ */
 function NowRow({ staff }: { staff: Staff }) {
   const live = useStore((s) => s.live[staff.id]);
+  const slipKind = useStore((s) => (live?.waitingSlipId ? s.slips[live.waitingSlipId]?.kind : undefined));
   const t = useNow(1000);
   if (!live?.running) return null;
+  const waiting = !!live.waitingSlipId;
   return (
     <Frame at={t} timeLabel="Now" who={<Bubble staff={staff} size={24} working />}>
-      <div className="now">
-        <span className="hl">{live.activity ?? 'Working'}</span>
-        {live.since && <span className="step-time">{dur(t - live.since)}</span>}
+      <div className={`now${waiting ? ' waiting' : ''}`} role="status">
+        <LiveMark waiting={waiting} />
+        <span className="hl">{waiting ? waitWords(slipKind) : (live.activity ?? 'Working')}</span>
+        {live.since && <span className="step-time">{waiting ? `for ${dur(t - live.since)}` : dur(t - live.since)}</span>}
         {live.queued > 0 && <span className="step-time">{plural(live.queued, 'message')} waiting</span>}
       </div>
+      {waiting && <p className="now-note">Nothing more happens until you {slipKind === 'question' ? 'answer' : 'sign or decline'} the slip above.</p>}
     </Frame>
   );
 }
@@ -259,14 +269,16 @@ export function Composer({ staff, hire, fill, placeholder }: { staff: Staff; hir
   const [sending, setSending] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
   const pick = useRef<HTMLInputElement>(null);
+  const shoot = useRef<HTMLInputElement>(null);
+  // Where a camera button opens a camera: phones and tablets.
+  const [camera] = useState(hasTouch);
 
   // Files chosen for one person do not follow to the next thread.
   useEffect(() => { setFiles([]); }, [staff.id]);
 
-  const attach = async (chosen: FileList | null) => {
-    if (!chosen) return;
-    const list = [...chosen];
+  const attach = async (list: File[]) => {
     if (pick.current) pick.current.value = '';
+    if (shoot.current) shoot.current.value = '';
     for (const f of list) {
       if (f.size > MAX_ATTACH) { toast(`${f.name} is larger than 25 MB. Put it in Drop here in the office Drive folder instead.`); continue; }
       if (f.size === 0) { toast(`${f.name} is empty.`); continue; }
@@ -333,10 +345,18 @@ export function Composer({ staff, hire, fill, placeholder }: { staff: Staff; hir
         </ul>
       )}
       <div className="composer-box">
-        <input ref={pick} type="file" multiple hidden onChange={(e) => void attach(e.target.files)} />
+        <input ref={pick} type="file" multiple hidden onChange={(e) => void attach(namedFiles(e.target.files))} />
         <button className="composer-attach" onClick={() => pick.current?.click()} aria-label="Attach a file" title="Attach a file">
           <PlusIcon color="currentColor" />
         </button>
+        {camera && (
+          <>
+            <input ref={shoot} type="file" accept="image/*" capture="environment" hidden onChange={(e) => void attach(namedPhotos(e.target.files))} />
+            <button className="composer-attach" onClick={() => shoot.current?.click()} aria-label="Take a photo" title="Take a photo">
+              <CameraIcon />
+            </button>
+          </>
+        )}
         <textarea ref={ref} rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={key} placeholder={label} aria-label={label} enterKeyHint="send" />
         {running && (
           <button className="btn btn-line" onClick={() => void api.stop(staff.id)}>

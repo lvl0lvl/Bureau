@@ -7,6 +7,12 @@ import WebKit
 enum Office {
     static let localDefault = URL(string: "http://localhost:8787")!
 
+    /// Is the office on this Mac, or reached over the network?
+    static func isThisMac(_ url: URL?) -> Bool {
+        guard let host = url?.host else { return true }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+
     /// Normalise what someone typed into an address the app can use.
     static func normalise(_ text: String) -> URL? {
         var s = text.trimmingCharacters(in: .whitespacesAndNewlines)

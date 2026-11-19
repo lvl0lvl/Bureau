@@ -44,7 +44,7 @@ void app.turns.readContexts();
   app.backup.start();
 // The office's Drive folder can appear after the office starts (Google Drive opens later); lay it out when it does.
 setInterval(() => { app.drive.ensure(); }, 10 * 60_000).unref();
-const http = createHttp(app, { webDist });
+const http = createHttp(app, { webDist, port });
 const server = createAdaptorServer({ fetch: http.fetch }) as Server;
 const sync = attachSync(server, app);
 

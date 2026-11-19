@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react';
 import { COMPACT_AT_MAX, COMPACT_AT_MIN, compactAt, usageGuard } from '@shared/contract.ts';
-import type { BackupStatus, CatalogPage, Connector, Device, DriveStatus, Duty, Effort, EngineInfo, InstalledSkill, ModelOption, Staff, UsageGuard } from '@shared/contract.ts';
+import type { BackupStatus, CatalogPage, Connector, Device, DriveStatus, Duty, Effort, EngineInfo, InstalledSkill, ModelOption, ReachInfo, Staff, UsageGuard } from '@shared/contract.ts';
 import { Bubble, ColorPicker, useLoad } from '../components/bits.tsx';
 import { CatalogBrowser, SkillInside, SkillMeta } from '../components/Catalog.tsx';
 import { Signature } from '../components/Signature.tsx';
@@ -11,6 +11,7 @@ import { inNativeApp, nativePlatform } from '../lib/native.ts';
 import { api, type PushInfo } from '../sync/client.ts';
 import { toast, useChief, useNow, useStaffList, useStore } from '../sync/store.ts';
 import { reloadPlanUsage, usePlanUsage } from '../sync/usage.ts';
+import { currentTheme, setTheme, THEMES } from '../lib/theme.ts';
 
 const W = 600;
 const H = 160;
@@ -240,7 +241,7 @@ function PersonEditor({ staff }: { staff: Staff }) {
         <div className="field">
           <span>Bubble color</span>
           <ColorPicker value={f.color} letter={(f.letter.trim() || f.name.trim()).slice(0, 1).toUpperCase()} onChange={(color) => setF({ ...f, color })} />
-          <small>Only to tell people apart. A yellow ring still means working now.</small>
+          <small>Only to tell people apart. The ring around a bubble still shows who is working and who is waiting on you.</small>
         </div>
         <label className="field">
           <span>Role</span>
@@ -625,8 +626,10 @@ function DriveAndBackup() {
   const [problem, setProblem] = useState<string | null>(null);
   const [path, setPath] = useState('');
   const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState<'folder' | 'key' | 'backup' | null>(null);
+  const [busy, setBusy] = useState<'folder' | 'key' | 'backup' | 'park' | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const chiefName = useChief()?.name ?? 'the chief of staff';
+  const ownerName = useStore((s) => s.settings?.ownerName) ?? '';
   // The recovery key is held here only while its dialog is open.
   const [shown, setShown] = useState<{ recoveryKey: string; replaced: boolean } | null>(null);
   const pathInput = useRef<HTMLInputElement>(null);
@@ -654,6 +657,14 @@ function DriveAndBackup() {
     setBackup(res.backup);
     setEditing(false);
     setPath('');
+  };
+  const park = async (folder: string, on: boolean) => {
+    setBusy('park');
+    const res = await api.parkDrop(folder, on);
+    setBusy(null);
+    if (!res) return;
+    setDrive(res.drive);
+    toast(on ? `${folder} is left alone.` : `${folder} goes to ${chiefName} again.`);
   };
   const backUp = async () => {
     setBusy('backup');
@@ -752,6 +763,31 @@ function DriveAndBackup() {
                   <span className="lane-note" style={{ whiteSpace: 'nowrap' }}>{f.files ? plural(f.files, 'file') : 'Empty'}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {drive.folder && drive.found && !editing && (drive.drop?.length ?? 0) > 0 && (
+            <div className="stack-sm">
+              <h3 className="aside-title">Folders in Drop here</h3>
+              <p className="panel-lede" style={{ margin: 0 }}>
+                What you leave in Drop here goes to {chiefName} to sort. A folder left alone stays where it is and nobody is told about it.
+              </p>
+              <div>
+                {drive.drop!.map((f) => (
+                  <div key={f.name} className="lane-row" style={{ alignItems: 'center' }}>
+                    <span className="lane-text">
+                      <b style={{ fontWeight: 600 }}>{f.name}</b>
+                      <span className="lane-note" style={{ display: 'block' }}>
+                        {f.files ? plural(f.files, 'file') : 'Not there now'}
+                        {f.parked ? `. Left alone since ${longDate(f.parked.at)}${f.parked.by !== ownerName ? `, by ${f.parked.by}` : ''}` : ''}
+                      </span>
+                    </span>
+                    <button className={`btn btn-sm ${f.parked ? 'btn-soft' : 'btn-line'}`} disabled={busy !== null} onClick={() => void park(f.name, !f.parked)}>
+                      {f.parked ? `Hand to ${chiefName} again` : 'Leave alone'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -892,14 +928,16 @@ function DriveAndBackup() {
 function Devices() {
   const t = useNow(60_000);
   const devices = useLoad<Device[]>(() => api.devices(), []);
-  const [code, setCode] = useState<{ code: string; url?: string; expiresAt?: number } | null>(null);
+  const reach = useLoad<ReachInfo>(() => api.reach(), []);
+  const [code, setCode] = useState<{ code: string; url?: string; expiresAt?: number; mac?: boolean } | null>(null);
   /** The devices that were paired when the code was made, to notice the one it adds. */
   const before = useRef<Set<string>>(new Set());
-  const make = async () => {
+  const make = async (mac = false) => {
+    if (mac) reach.reload();
     const c = await api.deviceCode();
     if (!c) return;
     before.current = new Set((devices.data ?? []).map((d) => d.id));
-    setCode(c);
+    setCode({ ...c, mac });
   };
   // While a code is showing, keep looking for the device that used it.
   useEffect(() => {
@@ -938,7 +976,10 @@ function Devices() {
           </div>
         ))}
       </div>
-      {code ? (
+      {reach.data?.taken && <ReachTaken taken={reach.data.taken} />}
+      {code?.mac ? (
+        <AddMac code={code.code} reach={reach.data} onCancel={() => setCode(null)} />
+      ) : code ? (
         <div className="stack-sm">
           <div className="code" aria-label="Pairing code">
             {code.code}
@@ -958,8 +999,71 @@ function Devices() {
           <button className="btn btn-line" onClick={() => void make()}>
             Add a device
           </button>
+          <button className="btn btn-soft" onClick={() => void make(true)} title="Install the Bureau app on another Mac, already paired">
+            Add a Mac
+          </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The office's Tailscale address answers for another app now, so no other device reaches Bureau. */
+function ReachTaken({ taken }: { taken: string }) {
+  const port = /:(\d+)\/?$/.exec(taken)?.[1];
+  return (
+    <div className="callout callout-warn" role="alert">
+      <p>
+        <b>Your other devices cannot reach the office right now.</b> Another app on this Mac{port ? ` (the one on port ${port})` : ''} has taken its Tailscale address. Give that app a different HTTPS port in its own settings, such as 8443, then run <code className="inline-code">pnpm remote:on</code> in the Bureau folder on this Mac.
+      </p>
+    </div>
+  );
+}
+
+/** One line for Terminal on the other Mac: it installs the app, points it here and pairs it. */
+function AddMac({ code, reach, onCancel }: { code: string; reach: ReachInfo | null | undefined; onCancel: () => void }) {
+  const [copied, setCopied] = useState(false);
+  if (!reach) return <p className="panel-lede" style={{ margin: 0 }}>Looking up the office's address…</p>;
+  const problem = !reach.address
+    ? reach.taken
+      ? 'Another Mac cannot reach the office until it has its Tailscale address back (see above).'
+      : reach.tailscale
+        ? 'Remote access is off, so another Mac cannot reach the office. Run pnpm remote:on in the Bureau folder on this Mac, then try again.'
+        : 'Tailscale is not running on this Mac, so another Mac cannot reach the office. Open Tailscale here, then try again.'
+    : !reach.macApp
+      ? 'This Mac has no built copy of the Mac app to hand out. Run pnpm mac:build in the Bureau folder, then try again.'
+      : null;
+  const line = reach.address ? `curl -fsSL '${reach.address}/api/mac/install?code=${code}' | sh` : '';
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(line);
+      setCopied(true);
+    } catch {
+      toast('Could not copy. Select the line and copy it instead.');
+    }
+  };
+  return (
+    <div className="stack-sm">
+      {problem ? (
+        <p className="panel-lede" style={{ margin: 0, color: 'var(--red)' }}>{problem}</p>
+      ) : (
+        <>
+          <ol className="steps">
+            <li>On the other Mac, make sure Tailscale is on and signed in to the same account as this one.</li>
+            <li>Open Terminal there (in Applications, Utilities), paste this line and press Return.</li>
+          </ol>
+          <div className="command-line">
+            <code className="inline-code">{line}</code>
+            <button className="btn btn-line btn-sm" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button>
+          </div>
+          <p className="panel-lede" style={{ margin: 0 }}>
+            It puts Bureau in Applications and opens your office, already paired. The line works once, for ten minutes. Needs macOS 14 or later.
+          </p>
+        </>
+      )}
+      <div className="row">
+        <button className="btn btn-soft btn-sm" onClick={onCancel}>{problem ? 'Close' : 'Done'}</button>
+      </div>
     </div>
   );
 }
@@ -1323,7 +1427,7 @@ function ConversationSize() {
     <section className="panel" id="context">
       <h2 className="panel-title">Conversation size</h2>
       <p className="panel-lede">
-        Each member of staff keeps one running conversation. When it nears the size below, Claude Code summarizes the earlier part to make room, which is called compaction, and some detail is lost. Notes, the Library and the Books are not touched by it.
+        Each member of staff keeps one running conversation. When it nears the size below, Claude Code summarizes the earlier part to make room, which is called compaction, and some detail is lost. Notes, artifacts and the Books are not touched by it.
       </p>
       <div className="usage-table">
         {staff.map((s) => {
@@ -1350,6 +1454,46 @@ function ConversationSize() {
           From {COMPACT_AT_MIN / 1000} to {COMPACT_AT_MAX / 1000}. {reserve ? `Claude Code keeps ${tokens(reserve)} in reserve, so compaction starts at ${tokens(window - reserve)}.` : 'Claude Code keeps a little in reserve, so compaction starts slightly before this.'} A change applies from each person’s next piece of work.
         </small>
       </label>
+    </section>
+  );
+}
+
+/** The look of the app on this device. Each choice is drawn in its own colours and letters. */
+function Appearance() {
+  const [chosen, setChosen] = useState(currentTheme);
+  return (
+    <section className="panel" id="appearance">
+      <h2 className="panel-title">Appearance</h2>
+      <p className="panel-lede">How Bureau looks on this device. Your other devices keep their own choice.</p>
+      <div className="themes" role="radiogroup" aria-label="Theme">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={chosen === t.id}
+            className={`theme-tile${chosen === t.id ? ' on' : ''}`}
+            onClick={() => {
+              setTheme(t.id);
+              setChosen(t.id);
+            }}
+          >
+            <span className="theme-swatch" aria-hidden="true" style={{ background: t.ground, color: t.ink, fontFamily: t.font, borderColor: t.ink }}>
+              <span className="theme-swatch-card" style={{ background: t.panel, borderColor: t.ink, borderRadius: t.radius }}>
+                <b>Aa</b>
+                <i style={{ background: t.ink }} />
+              </span>
+              <span className="theme-swatch-marks">
+                <i style={{ background: t.owner, borderRadius: t.radius / 3 }} />
+                <i className="round" style={{ background: t.needs }} />
+                <i className="round" style={{ background: t.working }} />
+              </span>
+            </span>
+            <span className="theme-name">{t.name}</span>
+            <span className="theme-note">{t.note}</span>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1393,8 +1537,8 @@ export function Settings() {
         <h1 className="page-title">Settings</h1>
         {/* The phone's tabs have no room for these two. */}
         <p className="phone-only flex settings-more">
-          <Link to="/library" className="link">
-            Library
+          <Link to="/artifacts" className="link">
+            Artifacts
           </Link>
           <Link to="/week" className="link">
             The week
@@ -1445,6 +1589,8 @@ export function Settings() {
           </div>
         </form>
       </section>
+
+      <Appearance />
 
       <section className="panel" id="signature">
         <h2 className="panel-title">Your signature</h2>

@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import type { HttpBindings } from '@hono/node-server';
-import type { EngineInfo, Level, LibraryFile, SessionInfo, UsageSummary } from '../../../shared/contract.ts';
+import type { EngineInfo, Level, LibraryFile, ReachInfo, SessionInfo, UsageSummary } from '../../../shared/contract.ts';
 import { actionClass, compactAt, EFFORTS, PROTOCOL, staffColor, usageGuard } from '../../../shared/contract.ts';
 import type { App } from './app.ts';
 import { Auth } from './auth.ts';
 import { ownerRemoved } from './calendar.ts';
-import { MAX_FILES_PER_MESSAGE, MAX_UPLOAD_BYTES } from './intake.ts';
+import { installScript, macAppSource, macZip } from './mac.ts';
+import { reach } from './reach.ts';
+import { leaveInDrop, MAX_FILES_PER_MESSAGE, MAX_UPLOAD_BYTES, NoDriveFolder } from './intake.ts';
 import { Scheduler } from './scheduler.ts';
 import { starterAuthority } from './hires.ts';
 import { systemAppend } from './prompt.ts';
@@ -25,13 +28,16 @@ const MIME: Record<string, string> = {
   '.md': 'text/markdown; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.pdf': 'application/pdf', '.py': 'text/plain; charset=utf-8',
 };
 
+const IMAGE: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.heic': 'image/heic', '.tsv': 'text/tab-separated-values; charset=utf-8', '.fountain': 'text/plain; charset=utf-8', '.json': 'application/json', '.js': 'text/plain; charset=utf-8', '.ts': 'text/plain; charset=utf-8', '.sh': 'text/plain; charset=utf-8', '.yaml': 'text/plain; charset=utf-8', '.yml': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.xml': 'text/plain; charset=utf-8', '.markdown': 'text/markdown; charset=utf-8' };
+
 const bad = (c: C, message: string, status: 400 | 403 | 404 | 409 | 413 = 400) => c.json({ error: message }, status);
 
 export function isSecure(c: C): boolean {
   return (c.req.header('x-forwarded-proto') ?? '').split(',')[0]?.trim() === 'https';
 }
 
-export function createHttp(app: App, opts: { webDist: string }) {
+export function createHttp(app: App, opts: { webDist: string; port?: number }) {
+  const port = opts.port ?? Number(process.env.BUREAU_PORT ?? 8787);
   const { store, auth, slips, turns, books, push, catalog, hires } = app;
   const settings = () => store.get('settings', 'settings')!;
   const api = new Hono<Env>();
@@ -55,6 +61,29 @@ export function createHttp(app: App, opts: { webDist: string }) {
     if (!value) return bad(c, 'That code is not valid any more. Make a new one in Settings on a device that is already paired.', 403);
     c.header('Set-Cookie', auth.cookie(value, isSecure(c)));
     return c.json({ ok: true });
+  });
+
+  // The Mac app for the owner's other Macs. Anyone who can reach the office may fetch it; it
+  // holds nothing of the office's, and it still has to be paired before it can open anything.
+  api.get('/mac/install', async (c) => {
+    const r = await reach(port);
+    const host = c.req.header('x-forwarded-host') ?? c.req.header('host') ?? '';
+    const office = r.address ?? `${isSecure(c) ? 'https' : 'http'}://${host}`;
+    if (!macAppSource()) return c.text('echo "The office has no copy of the Mac app to hand out. On the office Mac, run: pnpm mac:build"; exit 1\n', 404);
+    try {
+      return c.text(installScript(office, c.req.query('code') ?? ''), 200, { 'Cache-Control': 'no-store' });
+    } catch {
+      return c.text('echo "This office has no address another Mac can use."; exit 1\n', 400);
+    }
+  });
+  api.get('/mac/Bureau.zip', async (c) => {
+    const zip = macZip(path.join(app.home, 'cache'));
+    if (!zip) return c.text('The office has no copy of the Mac app to hand out.', 404);
+    const file = await zip;
+    const size = fs.statSync(file).size;
+    return new Response(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, {
+      headers: { 'Content-Type': 'application/zip', 'Content-Length': String(size), 'Content-Disposition': 'attachment; filename="Bureau.zip"', 'Cache-Control': 'no-store' },
+    });
   });
 
   // ------------------------------------------- everything else: paired only
@@ -122,6 +151,23 @@ export function createHttp(app: App, opts: { webDist: string }) {
     }
   });
 
+  // A photo taken in the app. It goes in "Drop here" in the office Drive folder, where the chief
+  // of staff picks it up like anything else left there. `watched` says whether that will happen.
+  api.put('/drop', async (c) => {
+    const declared = Number(c.req.header('content-length') ?? 0);
+    if (declared > MAX_UPLOAD_BYTES) return bad(c, 'That file is larger than 25 MB.', 413);
+    const data = new Uint8Array(await c.req.arrayBuffer());
+    try {
+      // An office that has not looked in the folder yet looks now, so the photo counts as new.
+      if (data.byteLength > 0 && data.byteLength <= MAX_UPLOAD_BYTES) app.drop.settle();
+      const left = leaveInDrop(app.drive, c.req.query('name') ?? 'file', data);
+      const watched = settings().watchDrop !== false && store.list('staff').some((s) => s.isChief && !s.retired);
+      return c.json({ name: left.name, bytes: left.bytes, watched });
+    } catch (e) {
+      return bad(c, (e as Error).message, e instanceof NoDriveFolder ? 409 : 413);
+    }
+  });
+
   api.post('/threads/:staffId/stop', (c) => { turns.stop(c.req.param('staffId')); return c.json({ ok: true }); });
 
   api.post('/threads/:staffId/new', (c) => {
@@ -136,7 +182,8 @@ export function createHttp(app: App, opts: { webDist: string }) {
   const slipResult = (c: C, r: ReturnType<typeof slips.sign>) => ('error' in r ? bad(c, r.error, 409) : c.json({ slip: r }));
   api.post('/slips/:id/sign', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    return slipResult(c, slips.sign(c.req.param('id'), typeof body.text === 'string' ? body.text : undefined));
+    const items = Array.isArray(body.items) ? body.items.filter((i: unknown): i is number => typeof i === 'number') : undefined;
+    return slipResult(c, slips.sign(c.req.param('id'), typeof body.text === 'string' ? body.text : undefined, items));
   });
   api.post('/slips/:id/undo', (c) => slipResult(c, slips.undo(c.req.param('id'))));
   api.post('/slips/:id/decline', async (c) => {
@@ -444,6 +491,64 @@ export function createHttp(app: App, opts: { webDist: string }) {
     });
   });
 
+  // -------------------------------------------------------- artifacts
+  // The library again, as pieces of work with their versions, and what the owner can do with them.
+  const artifactResult = async (c: C, fn: () => unknown) => {
+    try { return c.json((await fn()) ?? { ok: true }); } catch (e) { return bad(c, (e as Error).message); }
+  };
+  api.get('/artifacts', (c) => c.json({ artifacts: app.artifacts.list(c.req.query('staff') || undefined) }));
+  api.get('/artifacts/file', (c) => {
+    const file = app.artifacts.file(String(c.req.query('staff') ?? ''), String(c.req.query('path') ?? ''));
+    if (!file) return bad(c, 'No such file.', 404);
+    const type = MIME[path.extname(file).toLowerCase()] ?? IMAGE[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+    const html = type.startsWith('text/html');
+    const pdf = type === 'application/pdf';
+    const inline = !c.req.query('download') && /^(text\/|image\/|application\/pdf|application\/json)/.test(type);
+    return new Response(fs.readFileSync(file), {
+      headers: {
+        // A page is handed over as text: the app shows it in a sealed frame of its own.
+        'Content-Type': html ? 'text/plain; charset=utf-8' : type,
+        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store',
+        // The browser's own PDF viewer will not run in a sandbox.
+        'Content-Security-Policy': pdf ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; object-src 'self'" : "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+      },
+    });
+  });
+  const artifactBody = async (c: C) => { const b = await c.req.json().catch(() => ({})); return { staff: String(b.staff ?? ''), id: String(b.id ?? ''), ...b }; };
+  api.post('/artifacts/retire', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => ({ artifact: app.artifacts.retire(b.staff, b.id, b.retired !== false) })); });
+  api.post('/artifacts/drive', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => app.artifacts.toDrive(b.staff, b.id, typeof b.version === 'string' ? b.version : undefined)); });
+  api.post('/artifacts/delete', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => app.artifacts.remove(b.staff, b.id)); });
+  // Notes on a passage, the owner's own edits, and handing the notes back to the writer.
+  api.get('/artifacts/notes', (c) => c.json({ notes: app.artifacts.notes(String(c.req.query('staff') ?? ''), String(c.req.query('id') ?? '')) }));
+  api.post('/artifacts/notes', async (c) => {
+    const b = await artifactBody(c);
+    return artifactResult(c, () => ({ note: app.artifacts.addNote(b.staff, b.id, { path: String(b.path ?? ''), quote: String(b.quote ?? ''), before: String(b.before ?? ''), text: String(b.text ?? '') }) }));
+  });
+  api.post('/artifacts/notes/:note/change', async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    return artifactResult(c, () => ({ note: app.artifacts.updateNote(c.req.param('note'), { text: typeof b.text === 'string' ? b.text : undefined, done: typeof b.done === 'boolean' ? b.done : undefined }) }));
+  });
+  api.delete('/artifacts/notes/:note', (c) => artifactResult(c, () => { app.artifacts.removeNote(c.req.param('note')); return { ok: true }; }));
+  api.post('/artifacts/edit', async (c) => {
+    const b = await artifactBody(c);
+    if (typeof b.text !== 'string' || typeof b.base !== 'string') return bad(c, 'Send the text and the version it was edited from.');
+    return artifactResult(c, () => app.artifacts.saveEdit(b.staff, b.id, b.base, b.text));
+  });
+  api.post('/artifacts/notes/send', async (c) => {
+    const b = await artifactBody(c);
+    const staff = store.get('staff', b.staff);
+    if (!staff || staff.retired) return bad(c, 'No such member of staff.', 404);
+    return artifactResult(c, () => {
+      const m = app.artifacts.composeNotes(staff.id, b.id);
+      // As if the owner had written it in the conversation, so it reads there and starts a turn.
+      const row = store.appendRow(staff.id, { type: 'message', from: 'owner', text: m.text });
+      void turns.enqueue(staff.id, { kind: 'owner', text: m.text, hint: m.hint });
+      return { row, notes: m.notes };
+    });
+  });
+
   // --------------------------------------------------------- settings
   api.put('/settings', async (c) => {
     const b = await c.req.json().catch(() => ({}));
@@ -473,7 +578,17 @@ export function createHttp(app: App, opts: { webDist: string }) {
   });
 
   // ------------------------------------------- Drive folder and backups
-  api.get('/drive', (c) => { app.drive.ensure(); return c.json(app.drive.status()); });
+  api.get('/drive', (c) => { app.drive.ensure(); return c.json({ ...app.drive.status(), drop: app.drop.folders() }); });
+  // Leave a folder in Drop here alone, or hand it over again.
+  api.post('/drop/park', async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    try {
+      app.drop.park(String(b.folder ?? ''), b.on !== false, settings().ownerName);
+    } catch (e) {
+      return bad(c, (e as Error).message);
+    }
+    return c.json({ drive: { ...app.drive.status(), drop: app.drop.folders() } });
+  });
   api.put('/drive', async (c) => {
     const folder = (await c.req.json().catch(() => ({}))).folder;
     try {
@@ -510,6 +625,8 @@ export function createHttp(app: App, opts: { webDist: string }) {
     return c.json({ devices: auth.devices(c.get('deviceId')) });
   });
   api.post('/devices/code', (c) => c.json(auth.createCode()));
+  // How other devices reach this office, and whether a Mac app can be handed out.
+  api.get('/reach', async (c) => c.json({ ...(await reach(port, c.req.query('fresh') !== undefined)), macApp: !!macAppSource() } satisfies ReachInfo));
   api.delete('/devices/:id', (c) => { push.forgetDevice(c.req.param('id')); auth.revoke(c.req.param('id')); return c.json({ ok: true }); });
 
   // ---------------------------------------------------- notifications

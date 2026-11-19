@@ -119,7 +119,9 @@ struct UnreachableView: View {
                 .font(.system(size: 30, weight: .heavy))
                 .tracking(-0.6)
                 .padding(.top, 24)
-            Text("Bureau will keep trying. If it is not running, start it with \u{201C}pnpm start\u{201D} in the Bureau folder, or \u{201C}pnpm service:install\u{201D} to keep it running from now on.")
+            Text(Office.isThisMac(server)
+                 ? "Bureau will keep trying. If it is not running, start it with \u{201C}pnpm start\u{201D} in the Bureau folder, or \u{201C}pnpm service:install\u{201D} to keep it running from now on."
+                 : "Bureau will keep trying. The office runs on another Mac: check that it is on and awake, and that Tailscale is on and signed in on this one.")
                 .font(.system(size: 15))
                 .foregroundStyle(graphite)
                 .fixedSize(horizontal: false, vertical: true)

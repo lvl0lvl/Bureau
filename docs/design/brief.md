@@ -37,6 +37,38 @@ set that leaves out blue, red and yellow so those keep their meaning.
 - **Nothing You Could Do** for the owner's signature only.
 - Scale: 40 to 44 display, 28 heading, 17 to 18 title, 14 to 15 body, 13 caption, 12 minimum.
 
+## Themes
+
+The drafting table is the design and the default. Four more looks were added at the owner's
+request (2026-11-15), each built from a reference picture the owner supplied. They are chosen
+per device under Appearance in Settings, so a phone and a Mac can differ.
+
+| Theme | Idea | Type | Owner / needs you / working |
+|---|---|---|---|
+| Drafting table | white film, black lead | Archivo | blue `#1D3FE3`, red `#E0362C`, yellow `#FFE14D` |
+| Graph paper | dot grid, square corners, a blue and lime band on each slip | JetBrains Mono | blue `#1C3CFF`, red `#F0341F`, lime `#C9F23F` |
+| Night shift | dark slate, frosted panels, round corners | Inter, Inter Tight for display | sky blue `#62ADFF`, orange `#FF8A3D`, teal `#25B6CC` |
+| Control room | amber on black, inverse-video title bars, scan lines | IBM Plex Mono, VT323 for display | pale amber `#FFF1C9`, red `#FF5A36`, amber `#F4B92F` |
+| Stationery | off-white paper, dark outlines, big radii, green, lilac and cream fills | Nunito | green `#1F8553`, red `#D63546`, butter `#FBD67A` |
+
+What a theme may change: colors, typefaces, corner radius, the ground behind the page, and the
+dress of buttons, tabs and slips. What it may not: layout, copy, and the three meanings. Every
+theme has a color for the owner, one for "needs you" and one for "working now", and the three
+can always be told apart at a glance. In Control room, where everything is amber, working now is
+a filled bubble against outlined ones. Staff stay circles and the owner stays a square. Copy never names a color
+(the calendar's key shows the edge itself), because the color is the theme's to choose.
+
+A theme is a block of token overrides in `apps/web/src/styles/themes.css` keyed on
+`data-theme` on the page, plus a row in `apps/web/src/lib/theme.ts` for the picker. Components
+use tokens only: `--surface` for panels, `--edge` for structural lines, `--round` to scale
+every radius, `--blue-fill` and `--on-blue` for filled controls, `--display` for headings.
+Adding a theme should not need a change outside those two files and the inline script in
+`apps/web/index.html` that applies the choice before the first paint.
+
+The earlier rejection of "dark mode with one neon accent" stands for the default. Night shift
+and Control room exist because the owner asked for them; neither follows the system's
+dark-mode setting.
+
 ## Devices
 
 - **Sign-off slip:** title and one-line detail on the left; on the right a block of
@@ -90,7 +122,7 @@ The build follows the six screens. Where it differs, and why:
   track, a mark at the hold limit, red only when the limit is reached (red means it needs the owner).
   Conversation size stays ink at any level, since compaction needs nothing from the owner.
 - On a phone the tabs are Desk, Work, Staff, Books and Calendar, then the owner's blue square,
-  which opens Settings (as the square at the foot of the sidebar does). Library and The week
+  which opens Settings (as the square at the foot of the sidebar does). Artifacts and The week
   have no tab; they are linked under the Settings title on a phone.
 - The lock-screen design is realised as real notifications (Web Push and Apple Push), which the
   system draws.
@@ -114,8 +146,8 @@ screenshots show what was made of them.
 | Phone, signed | `05-phone-signed.png` | A slip just signed with Face ID, undo window |
 | Phone, lock screen | `06-phone-lock-screen.png` | Sign from a notification |
 
-Not designed yet: Books, Calendar, Library, hiring a staff member, settings, the iPhone thread
-view, dark mode, empty and error states.
+Not designed yet: Books, Calendar, Artifacts, hiring a staff member, settings, the iPhone thread
+view, empty and error states. The themes above were built in code and are not in Paper.
 
 Details settled while designing:
 

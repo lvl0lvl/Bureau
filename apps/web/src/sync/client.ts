@@ -1,5 +1,5 @@
 import { PROTOCOL } from '@shared/contract.ts';
-import type { BackupStatus, BooksCommit, BooksEntry, CatalogPage, CatalogSkillDetail, CatalogSource, Device, DriveStatus, DueItem, DutyRun, EngineInfo, Duty, Hire, InstalledSkill, Level, LibraryFile, PlanUsage, Row, ServerMsg, SessionInfo, Settings, Slip, Snapshot, Staff, ThreadPage, UsageSummary, WeekReport, WorkItem } from '@shared/contract.ts';
+import type { Artifact, ArtifactNote, BackupStatus, BooksCommit, BooksEntry, CatalogPage, CatalogSkillDetail, CatalogSource, Device, DriveStatus, DueItem, DutyRun, EngineInfo, Duty, Hire, InstalledSkill, Level, PlanUsage, ReachInfo, Row, ServerMsg, SessionInfo, Settings, Slip, Snapshot, Staff, ThreadPage, UsageSummary, WeekReport, WorkItem } from '@shared/contract.ts';
 import { applyChanges, applyLive, applySnapshot, applyStream, applyThread, clearCache, dropThread, now, patchThread, readCache, toast, useStore } from './store.ts';
 export interface PushInfo {
   publicKey?: string;
@@ -353,6 +353,21 @@ export const api = {
     return { id: data.id, name: data.name ?? file.name, bytes: data.bytes ?? file.size };
   },
 
+  /**
+   * Put a photo in "Drop here" in the office Drive folder, where the chief of staff picks it up.
+   * `watched` is false when the office is not handing that folder to anyone. Fails with 409 when
+   * the folder cannot be seen, and with 404 on an office that has not been restarted since this
+   * was added; the caller then sends the photo as an attachment instead.
+   */
+  async drop(file: File): Promise<{ name: string; bytes: number; watched: boolean }> {
+    if (transport.kind !== 'http') return { name: file.name, bytes: file.size, watched: true };
+    const res = await fetch(`/api/drop?name=${encodeURIComponent(file.name)}`, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/octet-stream' }, body: file });
+    const data = await res.json().catch(() => null) as { name?: string; bytes?: number; watched?: boolean; error?: string } | null;
+    // An answer that is not the office's own (an older office serving the page instead) counts as "not there".
+    if (!res.ok || !data?.name) throw new HttpError(res.ok ? 404 : res.status, data?.error || 'The photo could not be sent.');
+    return { name: data.name, bytes: data.bytes ?? file.size, watched: data.watched !== false };
+  },
+
   sendMessage(staffId: string, text: string, opts: { hire?: string | null; files?: { id: string; name: string; bytes: number }[] } = {}): Promise<unknown> {
     const body = text.trim();
     const files = opts.files ?? [];
@@ -380,10 +395,11 @@ export const api = {
   stop: (staffId: string) => command(() => transport.http('POST', `/threads/${encodeURIComponent(staffId)}/stop`)),
   newConversation: (staffId: string) => command(() => transport.http('POST', `/threads/${encodeURIComponent(staffId)}/new`)),
 
-  sign(slipId: string, text?: string) {
+  /** Sign a slip. `items` names the items of a batch that are signed. */
+  sign(slipId: string, text?: string, items?: number[]) {
     const undoSeconds = get().settings?.undoSeconds ?? 0;
     const undo = patchSlip(slipId, { status: 'signing', commitAt: now() + undoSeconds * 1000, decidedAt: now() });
-    return command(() => transport.http('POST', `/slips/${slipId}/sign`, text === undefined ? {} : { text }), undo);
+    return command(() => transport.http('POST', `/slips/${slipId}/sign`, { ...(text === undefined ? {} : { text }), ...(items ? { items } : {}) }), undo);
   },
   undo(slipId: string) {
     const undo = patchSlip(slipId, { status: 'pending', commitAt: undefined, decidedAt: undefined });
@@ -475,6 +491,7 @@ export const api = {
 
   // The office's folder in Google Drive, and the nightly backups that go into it.
   driveStatus: () => transport.http<DriveStatus>('GET', '/drive'),
+  parkDrop: (folder: string, on: boolean) => command(() => transport.http<{ drive: DriveStatus }>('POST', '/drop/park', { folder, on })),
   chooseDrive: (folder: string | null) => command(() => transport.http<{ drive: DriveStatus; backup: BackupStatus }>('PUT', '/drive', { folder })),
   backupStatus: () => transport.http<BackupStatus>('GET', '/backup'),
   /** The answer carries the recovery key, once. Callers keep it in a dialog's own state and nowhere else. */
@@ -525,25 +542,48 @@ export const api = {
   },
   booksRevert: (sha: string) => command(() => transport.http('POST', '/books/revert', { sha })),
 
-  async library(): Promise<LibraryFile[]> {
-    return list<LibraryFile>(await transport.http('GET', '/library'), 'files', 'library');
+  async artifacts(staffId?: string): Promise<Artifact[]> {
+    return list<Artifact>(await transport.http('GET', `/artifacts${staffId ? `?staff=${encodeURIComponent(staffId)}` : ''}`), 'artifacts');
   },
-  async openLibraryFile(file: LibraryFile): Promise<void> {
-    const path = `/library/file?staff=${encodeURIComponent(file.staffId)}&path=${encodeURIComponent(file.path)}`;
-    if (transport.kind === 'http') {
-      window.open(`/api${path}`, '_blank', 'noopener');
-      return;
+  /** Where one version of an artifact can be loaded by the browser itself (an image, a PDF), or null with the sample office. */
+  artifactUrl(staffId: string, path: string, download = false): string | null {
+    if (transport.kind !== 'http') return null;
+    return `/api/artifacts/file?staff=${encodeURIComponent(staffId)}&path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`;
+  },
+  /** One version as text, exactly as saved. */
+  async artifactText(staffId: string, path: string): Promise<string> {
+    const url = this.artifactUrl(staffId, path);
+    if (!url) {
+      const data = await transport.http<{ text?: string }>('GET', `/artifacts/file?staff=${encodeURIComponent(staffId)}&path=${encodeURIComponent(path)}`);
+      return data?.text ?? '';
     }
-    const data = await transport.http<{ text?: string }>('GET', path);
-    const url = URL.createObjectURL(new Blob([data?.text ?? ''], { type: 'text/plain' }));
-    window.open(url, '_blank', 'noopener');
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) throw new HttpError(res.status, res.status === 404 ? 'This file is no longer there.' : 'This file could not be opened.');
+    return await res.text();
   },
+  retireArtifact: (a: Artifact, retired: boolean) => command(() => transport.http<{ artifact: Artifact }>('POST', '/artifacts/retire', { staff: a.staffId, id: a.id, retired })),
+  artifactToDrive: (a: Artifact, version?: string) => command(() => transport.http<{ to: string; already: boolean }>('POST', '/artifacts/drive', { staff: a.staffId, id: a.id, version })),
+  deleteArtifact: (a: Artifact) => command(() => transport.http<{ files: number }>('POST', '/artifacts/delete', { staff: a.staffId, id: a.id })),
+  /** Notes the owner left on passages of one artifact, oldest first. */
+  async artifactNotes(a: Artifact): Promise<ArtifactNote[]> {
+    return list<ArtifactNote>(await transport.http('GET', `/artifacts/notes?staff=${encodeURIComponent(a.staffId)}&id=${encodeURIComponent(a.id)}`), 'notes');
+  },
+  addArtifactNote: (a: Artifact, note: { path: string; quote: string; before: string; text: string }) =>
+    command(() => transport.http<{ note: ArtifactNote }>('POST', '/artifacts/notes', { staff: a.staffId, id: a.id, ...note })),
+  updateArtifactNote: (id: string, patch: { text?: string; done?: boolean }) => command(() => transport.http<{ note: ArtifactNote }>('POST', `/artifacts/notes/${encodeURIComponent(id)}/change`, patch)),
+  removeArtifactNote: (id: string) => command(() => transport.http('DELETE', `/artifacts/notes/${encodeURIComponent(id)}`)),
+  /** Hand the open notes (and any edits since) to the person who wrote it, as one message. */
+  sendArtifactNotes: (a: Artifact) => command(() => transport.http<{ notes: number }>('POST', '/artifacts/notes/send', { staff: a.staffId, id: a.id })),
+  /** Save the owner's edit of one version as the next version. */
+  saveArtifactEdit: (a: Artifact, base: string, text: string) => command(() => transport.http<{ path: string }>('POST', '/artifacts/edit', { staff: a.staffId, id: a.id, base, text })),
 
   async devices(): Promise<Device[]> {
     return list<Device>(await transport.http('GET', '/devices'), 'devices');
   },
   deviceCode: () => command(() => transport.http<{ code: string; url?: string; expiresAt?: number }>('POST', '/devices/code')),
   revokeDevice: (id: string) => command(() => transport.http('DELETE', `/devices/${id}`)),
+  /** How other devices reach the office, and whether it can hand out the Mac app. */
+  reach: (fresh = false) => transport.http<ReachInfo>('GET', `/reach${fresh ? '?fresh=1' : ''}`),
 
   /** The Claude account staff run on and the apps connected to it. */
   week: () => transport.http<WeekReport>('GET', '/week'),

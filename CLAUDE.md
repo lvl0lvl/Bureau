@@ -15,11 +15,15 @@ never part of the shared copy of the code; see "Sharing the code" below.
 ## What exists
 
 A first working build, walked end to end and in daily use since 2026-11-14: the server
-(`apps/server`, 100 tests), the web interface (`apps/web`), the iPhone shell (`apps/ios`) and the
+(`apps/server`, 129 tests), the web interface (`apps/web`), the iPhone shell (`apps/ios`) and the
 Mac app (`apps/mac`, installed at `/Applications/Bureau.app` with `pnpm mac:install`). Demo mode
 (`pnpm start:demo`) shows the whole product without spending usage. Screenshots of the build are
 in `docs/built/`, taken from a demo office with an invented owner.
 
+- **Other Macs.** Settings, Devices, "Add a Mac" gives one Terminal line for the other Mac that
+  installs the Mac app from the office itself, points it at the office's Tailscale address and
+  pairs it (`apps/server/src/mac.ts`, `reach.ts`). Settings warns when another app has taken
+  the office's Tailscale address. See "The Mac app" in `docs/architecture.md`.
 - **The Claude account.** The office runs on the Mac's ordinary Claude Code sign-in. It does not
   follow the account of the shell or Claude Code session that starts it: an inherited
   `CLAUDE_CONFIG_DIR` is dropped. Settings shows the account and its connected apps. Gmail,
@@ -36,6 +40,12 @@ in `docs/built/`, taken from a demo office with an invented owner.
   staff, Filed and Backups. The office backs itself up there once a day as an age-encrypted
   archive (`apps/server/src/backup.ts`, `pnpm office:restore`). Only the public half of the key
   is kept; the owner holds the recovery key. Tests in `test/backup.test.ts` need `age`.
+- **Artifacts.** Finished work is whatever staff write in their own `library/` folder; versions
+  are files named "Title v2", "Title v3". The newest show in a person's details and open in a
+  large viewer (a script laid out as a script, tables, charts in a sealed frame) with Save to
+  Drive, Retire and Delete. The owner can leave notes on passages and send them to the writer as
+  one message, or edit the text and save it as a version of their own. `/artifacts` lists everyone's. See "Artifacts" in
+  `docs/architecture.md`.
 - **Calendar.** `/calendar` is a list over a week or month grid. Staff copy the owner's Google
   Calendar onto it with the office tool `copy_calendar` (`apps/server/src/calendar.ts`); the
   server itself never reads Google. Calendar reads count as outside material.
@@ -52,17 +62,25 @@ in `docs/built/`, taken from a demo office with an invented owner.
   back as a proposed rule (a slip of kind `lesson`); signing adds a line to that person's profile
   (`Slips.maybeLearn`). Files reach the office attached to a message (`PUT /api/uploads`), left
   in the Drive folder's Drop here (`DropWatch` in `apps/server/src/intake.ts`, handed to the
-  chief of staff), or forwarded to the owner's own address with `+office` (a briefing convention,
-  untested against real mail). All three are outside material. `/week` counts the last seven
+  chief of staff; the phone's camera button puts a photo there with `PUT /api/drop`), or
+  forwarded to the owner's own address with `+office` (a briefing convention, untested against
+  real mail). All three are outside material. `/week` counts the last seven
   days from the office's records (`apps/server/src/week.ts`); staff do not write it.
+- **Themes.** Five looks, chosen per device under Appearance in Settings and kept in that
+  browser (`apps/web/src/lib/theme.ts`, key `bureau.theme`): Drafting table (the default), Graph
+  paper, Night shift, Control room, Stationery. A theme is a block of token overrides in
+  `apps/web/src/styles/themes.css` keyed on `data-theme`; components use tokens only, never a
+  literal color, typeface or radius. An inline script in `apps/web/index.html` applies the choice
+  before the first paint. Rules for themes are in `docs/design/brief.md`.
 - **The owner has no name in the code.** What staff call the owner and what they are told about
   the owner are settings (`Settings.ownerName`, `Settings.ownerAbout`, both under "You" in
   Settings). The owner's messages are `from: 'owner'` and the question tool is `ask_owner`.
 
 Known gaps: a turn waiting on the owner holds that person's queue and does not survive a
-restart; mail forwarded with `+office` has not been tried. Not built: iMessage, 1Password, dark
-mode. Not tested: Apple Push, Face ID on a real phone, and on the Mac a real Touch ID match and
-notification banners (the owner has to allow notifications for Bureau in System Settings first).
+restart; mail forwarded with `+office` has not been tried. Not built: iMessage, 1Password. Not
+tested: Apple Push, Face ID on a real phone, the status bar over a dark theme on a real iPhone,
+and on the Mac a real Touch ID match and notification banners (the owner has to allow
+notifications for Bureau in System Settings first).
 
 ## Read these first when working on the code
 
@@ -120,6 +138,9 @@ notification banners (the owner has to allow notifications for Bureau in System 
 - The web app is served from `apps/web/dist`. `pnpm build` in a checkout that a running office
   serves from changes what that office's devices load at once, so build there only when the
   server is about to be restarted on the same code, or when the change is to the web app alone.
+- Web styles use the tokens at the top of `apps/web/src/styles/app.css` (`--surface`, `--edge`,
+  `--round`, `--on-blue` and the rest). A literal `#fff`, a font name or a bare pixel radius in a
+  rule breaks the themes. Copy never names a color. Look at a change in at least one dark theme.
 - **Never name a person in code, prompts, tests, docs or screenshots.** The person the office
   works for is "the owner"; sample data uses invented people (Robin Hale is the owner in tests
   and fixtures). Names, addresses, accounts, host names and anything about someone's life belong

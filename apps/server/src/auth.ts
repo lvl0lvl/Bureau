@@ -78,7 +78,8 @@ export class Auth {
   /** Exchange a one-time code for a device session. */
   pair(code: string, label: string): string | null {
     const id = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    const doc = this.store.getPrivate<CodeDoc>('_code', id);
+    // A code made by `pnpm pair` is written by another process, so look in the database too.
+    const doc = this.store.getPrivate<CodeDoc>('_code', id) ?? this.store.readPrivate<CodeDoc>('_code', id);
     if (!doc) return null;
     this.store.delPrivate('_code', id);
     if (doc.expiresAt < Date.now()) return null;

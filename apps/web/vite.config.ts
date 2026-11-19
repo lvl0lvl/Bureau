@@ -14,7 +14,8 @@ export default defineConfig({
     // pnpm keeps packages (and the fonts) in the workspace root, two levels up.
     fs: { allow: [workspaceRoot] },
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8787', changeOrigin: false, ws: true },
+      // BUREAU_PORT points the dev server at an office on another port (a demo office, say).
+      '/api': { target: `http://127.0.0.1:${process.env.BUREAU_PORT || 8787}`, changeOrigin: false, ws: true },
     },
   },
   build: { outDir: 'dist', sourcemap: false, target: 'es2022' },

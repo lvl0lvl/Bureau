@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { classify, decide, isPrivateOutside, isReadOnlyCommand, type GateContext } from '../src/authority.ts';
 
@@ -15,6 +17,14 @@ test('work inside your own folder is always allowed', () => {
     assert.equal(c.classId, null);
     assert.equal(decide(0, c, { tainted: true }).outcome, 'allow');
   }
+});
+
+test('Claude Code’s own memory folder is refused with the way to the person’s own notes', () => {
+  const c = classify('Write', { file_path: path.join(os.homedir(), '.claude', 'projects', '-office-staff-tally', 'memory', 'rule.md'), content: 'x' }, ctx);
+  assert.match(c.refuse ?? '', /notes\/memory\.md/);
+  assert.equal(decide(4, c, { tainted: false }).outcome, 'deny');
+  // Their own notes stay open to them at any level.
+  assert.equal(decide(0, classify('Edit', { file_path: 'notes/memory.md', new_string: 'x' }, ctx), { tainted: true }).outcome, 'allow');
 });
 
 test('reading the Books is free; changing them is an action', () => {

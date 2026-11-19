@@ -234,7 +234,7 @@ function DraftEditor({ hire, chief, onSigned }: { hire: HireDraft; chief: Staff;
   );
 }
 
-function NoDraft({ chief, onStart }: { chief: Staff; onStart: (text: string) => void }) {
+function NoDraft({ chief, onStart, onTalk }: { chief: Staff; onStart: (text: string) => void; /** On a phone, back to the box to write in. */ onTalk?: () => void }) {
   return (
     <div className="hire-draft">
       <header className="stack-sm">
@@ -244,6 +244,11 @@ function NoDraft({ chief, onStart }: { chief: Staff; onStart: (text: string) => 
           This is a conversation, not a form. {chief.name} asks about the job until it is clear, which can take a few rounds, then drafts a name, a role, a profile, starting authority and the skills worth installing. You can change anything in the draft or keep talking until it is
           right. Nothing exists until you sign.
         </p>
+        {onTalk && (
+          <button className="btn btn-blue" onClick={onTalk} style={{ alignSelf: 'flex-start' }}>
+            Write to {chief.name}
+          </button>
+        )}
       </header>
       <section className="aside-block">
         <div className="aside-head">
@@ -280,10 +285,18 @@ export function Hire() {
   const chief = useChief();
   const drafts = useHireDrafts();
   const phone = useIsPhone();
-  const forId = new URLSearchParams(useSearch()).get('for');
+  const search = new URLSearchParams(useSearch());
+  const forId = search.get('for');
+  // Arriving from the bar in the chief of staff's thread, or the Desk: open that draft.
+  const askedFor = search.get('draft');
   const forStaff = useStore((s) => (forId ? s.staff[forId] : undefined));
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [side, setSide] = useState<'talk' | 'draft'>('talk');
+  const [chosen, setChosen] = useState<string | null>(askedFor);
+  const [side, setSide] = useState<'talk' | 'draft'>(askedFor ? 'draft' : 'talk');
+  useEffect(() => {
+    if (!askedFor) return;
+    setChosen(askedFor);
+    setSide('draft');
+  }, [askedFor]);
   const [fill, setFill] = useState<ComposerFill | undefined>(undefined);
   const [signed, setSigned] = useState<{ name: string; again: boolean } | null>(null);
   const filledFor = useRef<string | null>(null);
@@ -374,7 +387,7 @@ export function Hire() {
               ))}
             </div>
           )}
-          {signed ? <Signed name={signed.name} again={signed.again} /> : draft ? <DraftEditor key={draft.id} hire={draft} chief={chief} onSigned={onSigned} /> : <NoDraft chief={chief} onStart={start} />}
+          {signed ? <Signed name={signed.name} again={signed.again} /> : draft ? <DraftEditor key={draft.id} hire={draft} chief={chief} onSigned={onSigned} /> : <NoDraft chief={chief} onStart={start} onTalk={phone ? () => setSide('talk') : undefined} />}
         </aside>
       )}
     </div>

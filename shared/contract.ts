@@ -358,6 +358,11 @@ export interface Slip {
    * is the draft text. Signing adds it to that person's profile.
    */
   lesson?: { staffId: string; from: 'edit' | 'decline'; about: string };
+  /**
+   * A batch: several actions of one kind put to the owner at once. The owner may untick items
+   * before signing; `approved` holds the items signed (indices into `items`), and only those run.
+   */
+  batch?: { classId: string; items: { label: string; title: string }[]; approved?: number[] };
   check?: SlipCheck;
   status: SlipStatus;
   /** While status is "signing": when the action will go ahead unless undone. */
@@ -539,6 +544,17 @@ export interface DriveStatus {
   folders: { name: string; purpose: string; files: number }[];
   /** Places on this Mac where a Google Drive is mounted, to choose a folder under. */
   mounts: string[];
+  /** Folders in Drop here, and whether each is left alone. Only from `GET /drive`. */
+  drop?: DropFolder[];
+}
+
+/** A folder in Drop here. One that is left alone is never handed to the chief of staff. */
+export interface DropFolder {
+  /** Inside Drop here, for example "writers_room". */
+  name: string;
+  files: number;
+  /** Left alone since, and on whose word; null while it is watched. */
+  parked: { at: number; by: string } | null;
 }
 
 export interface BackupStatus {
@@ -630,6 +646,18 @@ export interface SessionInfo {
   protocol: number;
 }
 
+/** How the owner's other devices reach the office (Tailscale Serve), from `GET /api/reach`. */
+export interface ReachInfo {
+  /** The https address other devices use, or null when none leads to this office. */
+  address: string | null;
+  /** Tailscale is installed and signed in on the office Mac. */
+  tailscale: boolean;
+  /** Another app is served at the Mac's own Tailscale address, so the office is not: its target. */
+  taken: string | null;
+  /** The office has a copy of the Mac app to hand to another Mac. */
+  macApp: boolean;
+}
+
 export interface ThreadPage {
   rows: Row[];
   hasMore: boolean;
@@ -655,6 +683,63 @@ export interface LibraryFile {
   path: string;
   size: number;
   modifiedAt: number;
+}
+
+/** What kind of thing an artifact is, which decides how it is shown. */
+export type ArtifactKind = 'script' | 'document' | 'table' | 'sheet' | 'page' | 'image' | 'pdf' | 'text' | 'file';
+
+export interface ArtifactVersion {
+  /** Relative to the person's library folder. */
+  path: string;
+  size: number;
+  modifiedAt: number;
+  /** "Version 3", or "Only version". */
+  label: string;
+  /** The owner wrote this version, by editing the one before it in the app. */
+  byOwner?: boolean;
+}
+
+/**
+ * A note the owner left on a passage of an artifact. Open notes wait to be sent; sending hands
+ * them to the person who wrote it as one message, and the next version answers them.
+ */
+export interface ArtifactNote {
+  id: string;
+  staffId: string;
+  /** The artifact's id. */
+  artifactId: string;
+  /** The version the passage was read in. */
+  path: string;
+  /** The passage, as it reads on screen. Empty for a note on the whole piece. */
+  quote: string;
+  /** A little of what comes before the passage, to find it again when it occurs twice. */
+  before: string;
+  text: string;
+  at: number;
+  /** When it was handed to the writer, and in which version they were asked to revise. */
+  sentAt: number | null;
+  /** The owner put it away: dealt with, or no longer wanted. */
+  doneAt: number | null;
+}
+
+/** A finished piece of work in a member of staff's library: every version of one file. */
+export interface Artifact {
+  /** Stable for the piece: its path in the library without the version mark. */
+  id: string;
+  staffId: string;
+  title: string;
+  /** The folder inside the library, or "". */
+  folder: string;
+  kind: ArtifactKind;
+  /** The file extension, lower case, without the dot. */
+  ext: string;
+  /** Newest first. */
+  versions: ArtifactVersion[];
+  modifiedAt: number;
+  /** Set when the owner took it off the list. The files stay. */
+  retiredAt: number | null;
+  /** Copies the owner saved to the office Drive folder. */
+  drive: { path: string; to: string; at: number }[];
 }
 
 /** Counts for one stretch of seven days, for the office or for one person. */

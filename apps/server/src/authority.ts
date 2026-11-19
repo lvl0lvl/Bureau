@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { CALENDAR_OUTSIDE } from './calendar.ts';
 import { isOfficeOwned } from './skills.ts';
@@ -163,6 +164,16 @@ export function classify(toolName: string, rawInput: unknown, ctx: GateContext):
         return { classId: 'mac.files', mode: 'execute', refuse: 'Your briefing, skills and settings are set by the owner, so you cannot change them yourself. If one should change, say what and why, and the owner can change it.', slip: plain('') };
       }
       return { classId: null, mode: writing ? 'execute' : 'read', slip: plain(`${toolName} ${rel}`) };
+    }
+    // Claude Code's own folder (its memory, settings and sessions) is not the person's to use.
+    if (within(path.join(os.homedir(), '.claude'), file) || (process.env.CLAUDE_CONFIG_DIR && within(process.env.CLAUDE_CONFIG_DIR, file))) {
+      return {
+        classId: 'mac.files', mode: writing ? 'execute' : 'read',
+        refuse: writing
+          ? 'That is Claude Code’s own folder, not yours. To remember something, write it in notes/memory.md in your own folder: you can always read and write your own folder, whatever your other permissions.'
+          : 'That is Claude Code’s own folder, not yours. Your notes are in notes/ in your own folder.',
+        slip: plain(''),
+      };
     }
     if (within(ctx.books, file)) {
       const relBooks = path.relative(ctx.books, file) || 'the Books';

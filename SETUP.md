@@ -133,6 +133,8 @@ on a phone):
 - **You.** What staff call the owner, initials, and **About you**: two or three sentences on
   what the owner does and the tools they use. Every member of staff is told this before each
   piece of work, so it is worth getting right. Ask the owner and type what they say.
+- **Appearance.** Five looks, two of them dark. The choice belongs to the device it is made
+  on, so the owner picks again on the phone. Nothing depends on it.
 - **Claude and connected apps.** Should show the Claude account and Gmail, Google Calendar and Google
   Drive as connected. If it shows a different account from the one the owner expects, stop
   the office, have the owner sign in again as in step 1, and start it again.

@@ -8,7 +8,8 @@ import { Hire } from './routes/Hire.tsx';
 import { Pair } from './routes/Pair.tsx';
 import { Calendar } from './routes/Calendar.tsx';
 import { Week } from './routes/Week.tsx';
-import { Books, Library } from './routes/Records.tsx';
+import { Books } from './routes/Records.tsx';
+import { ArtifactsPage } from './components/Artifacts.tsx';
 import { Settings } from './routes/Settings.tsx';
 import { StaffMatrix } from './routes/StaffMatrix.tsx';
 import { Thread } from './routes/Thread.tsx';
@@ -63,8 +64,8 @@ export function App() {
     case 'calendar':
       view = <Calendar />;
       break;
-    case 'library':
-      view = <Library />;
+    case 'artifacts':
+      view = <ArtifactsPage />;
       break;
     case 'week':
       view = <Week />;

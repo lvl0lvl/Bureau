@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Bubble, SearchIcon, Wordmark } from '../components/bits.tsx';
+import { Bubble, LiveMark, SearchIcon, waitWords, Wordmark } from '../components/bits.tsx';
 import { SlipCard } from '../components/Slip.tsx';
 import { clock, dueLane, dur, greeting, isoDay, longDate, plural, shortDate, timeOfDay } from '../lib/format.ts';
 import { Link, navigate, useSearch } from '../lib/router.tsx';
@@ -60,6 +60,7 @@ export function Desk() {
   const liveMap = useStore((s) => s.live);
   const dueMap = useStore((s) => s.due);
   const doneMap = useStore((s) => s.done);
+  const slipMap = useStore((s) => s.slips);
   const staff = useStaffList();
   const slips = useSlipList();
   const chief = useChief();
@@ -169,7 +170,7 @@ export function Desk() {
         </header>
 
         {hireDrafts.length > 0 && (
-          <Link to="/hire" className="desk-pointer">
+          <Link to={`/hire?draft=${encodeURIComponent(hireDrafts[0]!.id)}`} className="desk-pointer">
             <span className="grow">
               <b>{hireDrafts.length === 1 ? 'A hire is in draft' : `${hireDrafts.length} hires are in draft`}:</b>{' '}
               {hireDrafts.map((h) => `${h.name}, ${h.role.charAt(0).toLowerCase()}${h.role.slice(1)}`).join('; ')}. Nothing exists until you sign.
@@ -217,15 +218,17 @@ export function Desk() {
             <div className="work-rows">
               {working.map((s) => {
                 const l = liveMap[s.id]!;
+                const waitingOn = l.waitingSlipId ? slipMap[l.waitingSlipId] : undefined;
                 return (
-                  <Link key={s.id} to={`/t/${s.id}`} className="work-row">
+                  <Link key={s.id} to={l.waitingSlipId ? `/?slip=${encodeURIComponent(l.waitingSlipId)}` : `/t/${s.id}`} className="work-row">
                     <Bubble staff={s} working />
                     <span className="grow">
                       <span className="work-name" style={{ display: 'block' }}>
                         {s.name}
                       </span>
-                      <span className="work-what" style={{ display: 'block' }}>
-                        {l.waitingSlipId ? <span className="red" style={{ fontWeight: 600 }}>{l.activity ?? 'Waiting for you'}</span> : (l.activity ?? 'Working')}
+                      <span className="work-what">
+                        <LiveMark waiting={!!l.waitingSlipId} />
+                        {l.waitingSlipId ? <span className="red" style={{ fontWeight: 600 }}>{waitWords(waitingOn?.kind)}{waitingOn ? `: ${waitingOn.title}` : ''}</span> : (l.activity ?? 'Working')}
                       </span>
                     </span>
                     <span className="work-time">{l.since ? dur(t - l.since) : ''}</span>
