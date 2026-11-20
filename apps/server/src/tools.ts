@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ACTION_CLASSES, actionClass, LEVEL_SHORT } from '../../../shared/contract.ts';
 import path from 'node:path';
 import { copyEvents, isDate, MAX_EVENTS, MAX_WINDOW_DAYS, timeOfDay } from './calendar.ts';
+import type { Artifacts } from './artifacts.ts';
 import type { Catalog } from './catalog.ts';
 import type { OfficeDrive } from './drive.ts';
 import type { AppTool } from './engine/types.ts';
@@ -30,6 +31,8 @@ export interface ToolsDeps {
   turns: () => Turns;
   /** The Drop here watch, for leaving a folder alone. */
   dropWatch?: () => DropWatch;
+  /** The owner's view of staff libraries, for marking a piece for the owner. */
+  artifacts?: () => Artifacts;
 }
 
 const HOUR = 3_600_000;
@@ -289,6 +292,36 @@ export function buildTools(deps: ToolsDeps, r: Running): AppTool[] {
       },
     },
   ];
+
+  const artifacts = deps.artifacts?.();
+  if (artifacts) {
+    tools.push({
+      name: 'mark_artifacts',
+      description: `Make pieces in a library stand out for ${owner()} in the app's lists of artifacts, with a highlighted border, until ${owner()} opens them. Use it when ${owner()} asks which one is which ("which one is the budget?") and may not know the file name: mark every piece that matches and say in your reply that they are marked. Name each piece by its path in library/ (any version's file will do) or by its title.${me().isChief ? ' As chief of staff you can mark pieces in someone else\'s library by naming them in staff.' : ''}`,
+      shape: {
+        pieces: z.array(z.string().min(1).max(300)).min(1).max(12).describe('Paths in library/, such as "Cold open v3 - 2026-11-16.fountain", or titles.'),
+        why: z.string().max(120).optional().describe(`A few words shown with the mark, such as "the budget you asked about".`),
+        ...(me().isChief ? { staff: z.string().max(60).optional().describe('Whose library, by name. Leave out for your own.') } : {}),
+      },
+      run: async ({ pieces, why, staff }) => {
+        let whose = me();
+        if (staff && String(staff).trim()) {
+          const want = String(staff).trim().toLowerCase();
+          const found = store.list('staff').find((s) => !s.retired && (s.name.toLowerCase() === want || s.id === want));
+          if (!found) return `No one on staff is called ${staff}.`;
+          whose = found;
+        }
+        const res = artifacts.mark(whose.id, (pieces as string[]).map(String), r.staffId, why ? String(why).trim() || null : null);
+        const lines: string[] = [];
+        if (res.marked.length) lines.push(`Marked for ${owner()}: ${res.marked.map((a) => `“${a.title}”`).join(', ')}. The mark clears when ${owner()} opens it.`);
+        if (res.unknown.length) {
+          const titles = artifacts.list(whose.id).filter((a) => !a.retiredAt).map((a) => `${a.title} (${a.versions[0]!.path})`);
+          lines.push(`Not found in ${whose.id === r.staffId ? 'your' : `${whose.name}'s`} library: ${res.unknown.join(', ')}. ${titles.length ? `What is there: ${titles.slice(0, 40).join('; ')}.` : 'It is empty.'}`);
+        }
+        return lines.join('\n');
+      },
+    });
+  }
 
   if (me().isChief) {
     tools.push({

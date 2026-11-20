@@ -675,6 +675,12 @@ button.mx-cell:hover { background: var(--wash); }
 
 /* ----------------------------------------------------------------- artifacts */
 
+.staff-edit { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--edge); border-radius: calc(8px * var(--round)); background: var(--raised); color: var(--ink); text-decoration: none; }
+.staff-edit .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.staff-edit b { font-size: 15px; line-height: 20px; }
+.staff-edit small { font-size: 12.5px; line-height: 17px; color: var(--graphite); }
+.staff-edit:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.aside-hint { margin: -4px 0 2px; font-size: 12.5px; line-height: 17px; color: var(--graphite); }
 .aside-heading { font-size: 20px; line-height: 24px; font-weight: 800; letter-spacing: -0.015em; margin-bottom: -10px; }
 .btn-red { border: 1px solid var(--red); color: var(--red); font-weight: 700; }
 .btn-red:hover:not(:disabled) { background: var(--red-wash); }
@@ -689,15 +695,18 @@ button.mx-cell:hover { background: var(--wash); }
 .artifact-glyph.big::after { width: 18px; height: 18px; }
 .artifact-glyph.big i { font-size: 13px; line-height: 15px; max-width: 60px; }
 
-.artifact-card { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 10px 0 9px; border-top: 1px solid var(--rule); text-align: left; }
-.artifact-card-text, .artifact-row .grow { display: flex; flex-direction: column; }
-.artifact-thumb { position: relative; display: block; height: 172px; overflow: hidden; border: 1px solid var(--rule); border-radius: calc(6px * var(--round)); background: var(--wash); }
-.artifact-card:hover .artifact-thumb { border-color: var(--edge); }
-.artifact-card:hover .duty-title, .artifact-row:hover .duty-title { text-decoration: underline; text-underline-offset: 3px; }
-/* Drawn at twice the size and scaled down, so a thumbnail is a true picture of the page. */
-.artifact-thumb-inner { position: absolute; left: 0; top: 0; width: 200%; height: 200%; transform: scale(.5); transform-origin: 0 0; pointer-events: none; padding: 16px 18px 0; }
-.artifact-thumb-inner .artifact-cannot { height: 100%; padding: 0; }
+.artifact-row .grow { display: flex; flex-direction: column; }
+.artifact-row:hover .duty-title { text-decoration: underline; text-underline-offset: 3px; }
 .artifact-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border-top: 1px solid var(--rule); text-align: left; }
+/* New work, and work staff marked for the owner, stand out until it is opened. */
+.artifact-row.is-new, .artifact-row.is-marked { border: 1.5px solid var(--blue); border-radius: calc(6px * var(--round)); padding: 8px 10px; margin: 4px 0; }
+.artifact-row.is-new + .artifact-row, .artifact-row.is-marked + .artifact-row { border-top-color: transparent; }
+.viewer-item.is-new:not(.on), .viewer-item.is-marked:not(.on) { box-shadow: inset 0 0 0 1.5px var(--blue); }
+.standout-tag { font-size: 12.5px; line-height: 17px; font-weight: 700; color: var(--blue); overflow-wrap: anywhere; }
+.viewer-item.on .standout-tag { color: var(--on-ink); }
+.artifact-list { max-width: 760px; }
+.artifact-list .artifact-row { padding-top: 10px; padding-bottom: 10px; }
+.artifact-by { display: flex; align-items: center; gap: 7px; flex-shrink: 0; font-size: 13.5px; color: var(--graphite); }
 
 /* The viewer: as big as the window allows, the list beside the document. */
 .viewer-scrim { position: fixed; inset: 0; z-index: 55; background: var(--scrim); display: flex; align-items: stretch; justify-content: center; padding: 28px; }
@@ -708,7 +717,6 @@ button.mx-cell:hover { background: var(--wash); }
 .viewer-search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; margin-bottom: 8px; border: 1px solid var(--rule); border-radius: calc(8px * var(--round)); background: var(--surface); flex-shrink: 0; }
 .viewer-search:focus-within { border-color: var(--ink); }
 .viewer-search input { flex: 1; min-width: 0; border: 0; background: none; font-size: 14px; outline: none; }
-.viewer-group { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; padding: 14px 0 6px; }
 .viewer-item { display: flex; align-items: center; gap: 11px; width: 100%; padding: 8px 8px; margin: 0 -8px; width: calc(100% + 16px); border-radius: calc(6px * var(--round)); text-align: left; }
 .viewer-item:hover { background: var(--wash); }
 .viewer-item.on { background: var(--ink); color: var(--on-ink); }
@@ -748,18 +756,14 @@ button.mx-cell:hover { background: var(--wash); }
 
 /* What is shown: a sheet of paper for anything written, the page itself for a page. */
 .artifact-page { background: var(--surface); border: 1px solid var(--rule); max-width: 816px; margin: 0 auto; padding: 64px 72px 88px; min-height: 100%; }
-.artifact-page.thumb { min-height: 0; height: 100%; padding: 30px 34px; }
 .artifact-doc { max-width: none; }
 .artifact-text { max-width: none; }
 .artifact-frame { flex: 1; width: 100%; min-height: 100%; border: 0; display: block; }
-.artifact-frame.thumb { position: absolute; inset: 0; width: 100%; height: 100%; }
 .artifact-image { max-width: 100%; height: auto; display: block; border: 1px solid var(--rule); background: var(--surface); }
-.artifact-thumb .artifact-image { width: 100%; height: 100%; object-fit: cover; border: 0; }
 .artifact-cannot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; min-height: 100%; padding: 40px 20px; text-align: center; }
 .artifact-cannot p { font-size: 15px; line-height: 22px; color: var(--graphite); max-width: 380px; }
 
 .artifact-table-wrap { background: var(--surface); border: 1px solid var(--rule); overflow: auto; max-width: 100%; width: max-content; margin: 0 auto; }
-.artifact-table-wrap.thumb { width: auto; height: 100%; overflow: hidden; }
 .viewer-body.k-table { padding: 24px; }
 .viewer-body.k-table .artifact-table-wrap { max-height: 100%; }
 .artifact-table { border-collapse: collapse; font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
@@ -801,7 +805,9 @@ button.mx-cell:hover { background: var(--wash); }
 .note-composer-wrap { position: absolute; inset: 0; z-index: 4; display: flex; align-items: flex-start; justify-content: center; padding: 84px 20px 20px; background: var(--scrim); }
 .note-composer { width: 100%; max-width: 440px; background: var(--raised); border: 1px solid var(--edge); border-radius: calc(10px * var(--round)); box-shadow: var(--pop-shadow); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .note-composer .note-quote { margin: 0; font-size: 13.5px; line-height: 19px; padding: 6px 10px; border-left: 3px solid var(--yellow); background: var(--wash); color: var(--ink); max-height: 120px; overflow-y: auto; overflow-wrap: anywhere; }
-.note-text { min-height: 84px; resize: vertical; }
+.note-text { min-height: 112px; max-height: 50vh; resize: none; overflow-y: auto; font-size: 16px; line-height: 23px; padding-top: 10px; padding-bottom: 10px; }
+.note-sent { margin: 0; font-size: 13px; line-height: 18px; color: var(--graphite); }
+.note-remove { margin-right: auto; }
 .note-composer-acts { justify-content: flex-end; gap: 8px; }
 
 .artifact-edit { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--wash); }
@@ -828,9 +834,7 @@ button.mx-cell:hover { background: var(--wash); }
 .sp-transition { text-align: right; margin: 1em 0; }
 .sp-centered { text-align: center; margin: 1em 0; }
 .sp-break { border: 0; border-top: 1px dashed var(--rule); margin: 2.5em 0; }
-.artifact-page.script.thumb .sp-title { padding: 10px 0 24px; }
 
-.artifact-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 30px 44px; max-width: 1100px; }
 
 /* --------------------------------------------------------------------- phone */
 
@@ -1015,6 +1019,7 @@ button.mx-cell:hover { background: var(--wash); }
   .viewer-notes.is-sheet .viewer-notes-head h3 { font-size: 18px; }
   .note-composer-wrap.is-sheet { position: fixed; z-index: 59; align-items: flex-end; padding: 0; }
   .note-composer.is-sheet { max-width: none; border-radius: calc(16px * var(--round)) calc(16px * var(--round)) 0 0; border-width: 1px 0 0; box-shadow: none; padding: 16px 20px calc(16px + var(--safe-b)); gap: 12px; max-height: none; overflow: visible; }
+  .note-composer.is-sheet .note-text { min-height: 132px; max-height: 38vh; }
   .note-composer.is-sheet .btn-sm { height: 40px; padding: 0 16px; font-size: 15px; }
   .artifact-edit-bar { flex-wrap: wrap; padding: 8px 14px; }
   .artifact-edit-bar span { flex-basis: 100%; }
@@ -1024,7 +1029,6 @@ button.mx-cell:hover { background: var(--wash); }
   .sp-paren { margin-left: 20%; margin-right: 12%; }
   .sp-line { margin-left: 10%; margin-right: 6%; }
   .sp-title { padding: 32px 0 48px; }
-  .artifact-people { grid-template-columns: minmax(0, 1fr); }
   .thread-head { padding: 10px 20px 12px; gap: 10px; }
   .thread-pointer { padding: 9px 20px; font-size: 14px; line-height: 19px; }
   .thread-head .bubble.s40 { --s: 32px; font-size: 14px; }

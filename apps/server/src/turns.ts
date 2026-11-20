@@ -147,6 +147,7 @@ export function stepLabel(name: string, rawInput: unknown): { label: string; det
         list_work: 'Checked the work list', add_work: 'Put work on the list', claim_work: 'Took a piece of work', note_work: 'Added a note to a piece of work', close_work: 'Closed a piece of work',
         drive_list: 'Looked in the office Drive folder', drive_move: 'Moved a file in Drive', drive_put: 'Put a file in Drive',
         drop_leave_alone: input.leave_alone === false ? 'Watched a Drop here folder again' : 'Left a Drop here folder alone',
+        mark_artifacts: `Marked ${Array.isArray(input.pieces) && input.pieces.length > 1 ? `${input.pieces.length} artifacts` : 'an artifact'} for you`,
         request_batch: `Asked you to sign ${Array.isArray(input.items) ? input.items.length : 'several'} at once`,
         search_skills: 'Searched the skills catalog', read_skill: 'Read a skill', propose_hire: input.hire_id ? 'Revised the proposal' : 'Drafted a proposal',
       };

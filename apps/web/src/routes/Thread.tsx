@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ACTION_CLASSES, LEVEL_SHORT, recordTotal } from '@shared/contract.ts';
 import type { Level, Staff, UsageSummary } from '@shared/contract.ts';
-import { BackIcon, Bubble, Hatch, LevelMarks, LiveMark, Sheet, waitWords } from '../components/bits.tsx';
+import { BackIcon, Bubble, ColorPicker, Hatch, LevelMarks, LiveMark, Sheet, waitWords } from '../components/bits.tsx';
 import { ArtifactsBlock, ArtifactViewer, useArtifactParam } from '../components/Artifacts.tsx';
 import { Composer, Transcript } from '../components/Conversation.tsx';
 import { ContextLine } from '../components/Usage.tsx';
@@ -44,11 +44,28 @@ export function StaffDetails({ staff }: { staff: Staff }) {
 
   return (
     <>
+      <Link to={`/settings#staff-${staff.id}`} className="staff-edit">
+        <span className="grow">
+          <b>Edit {staff.name}</b>
+          <small>Name, role, profile, model, duties and skills</small>
+        </span>
+        <span className="btn btn-line btn-sm" aria-hidden="true">
+          Edit
+        </span>
+      </Link>
+
+      <section className="aside-block" style={{ gap: 8 }}>
+        <div className="aside-head" style={{ minHeight: 24 }}>
+          <h2 className="aside-title">Bubble color</h2>
+        </div>
+        <ColorPicker value={staff.color ?? null} letter={staff.letter} onChange={(color) => void api.saveStaff(staff.id, { color })} />
+      </section>
+
       <section className="aside-block">
         <div className="aside-head" style={{ paddingTop: 8 }}>
           <h2 className="aside-title">Duties</h2>
           <Link to={`/settings#staff-${staff.id}`} className="link">
-            Edit
+            Change
           </Link>
         </div>
         {duties.length === 0 && <p className="empty" style={{ fontSize: 14 }}>No standing duties yet. Add one in Settings and {staff.name} will keep to it.</p>}
@@ -95,6 +112,7 @@ export function StaffDetails({ staff }: { staff: Staff }) {
             Everyone
           </Link>
         </div>
+        <p className="aside-hint">Tap a line to change what {staff.name} may do.</p>
         {classes.map((c) => {
           const level = (staff.authority[c.id] ?? 0) as Level;
           if (c.locked) {

@@ -517,6 +517,7 @@ export function createHttp(app: App, opts: { webDist: string; port?: number }) {
     });
   });
   const artifactBody = async (c: C) => { const b = await c.req.json().catch(() => ({})); return { staff: String(b.staff ?? ''), id: String(b.id ?? ''), ...b }; };
+  api.post('/artifacts/seen', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => ({ artifact: app.artifacts.seen(b.staff, b.id) })); });
   api.post('/artifacts/retire', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => ({ artifact: app.artifacts.retire(b.staff, b.id, b.retired !== false) })); });
   api.post('/artifacts/drive', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => app.artifacts.toDrive(b.staff, b.id, typeof b.version === 'string' ? b.version : undefined)); });
   api.post('/artifacts/delete', async (c) => { const b = await artifactBody(c); return artifactResult(c, () => app.artifacts.remove(b.staff, b.id)); });

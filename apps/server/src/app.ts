@@ -100,7 +100,7 @@ export function createApp(opts: { home: string; engine: Engine; demo?: boolean; 
   let turns!: Turns;
   turns = new Turns({
     store, slips, engine: opts.engine, books, staffRoot, skills, work, drive,
-    buildTools: (running) => buildTools({ store, slips, catalog, hires, work, drive, staffRoot, books: books.dir, turns: () => turns, dropWatch: () => drop }, running),
+    buildTools: (running) => buildTools({ store, slips, catalog, hires, work, drive, staffRoot, books: books.dir, turns: () => turns, dropWatch: () => drop, artifacts: () => artifacts }, running),
     onLive: (live) => { for (const fn of liveListeners) fn(live); },
   });
 

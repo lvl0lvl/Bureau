@@ -41,7 +41,8 @@ in `docs/built/`, taken from a demo office with an invented owner.
   archive (`apps/server/src/backup.ts`, `pnpm office:restore`). Only the public half of the key
   is kept; the owner holds the recovery key. Tests in `test/backup.test.ts` need `age`.
 - **Artifacts.** Finished work is whatever staff write in their own `library/` folder; versions
-  are files named "Title v2", "Title v3". The newest show in a person's details and open in a
+  are files named "Title v2", "Title v3". The newest show in a person's details (new work and work staff marked for the
+  owner with `mark_artifacts` stand out until opened) and open in a
   large viewer (a script laid out as a script, tables, charts in a sealed frame) with Save to
   Drive, Retire and Delete. The owner can leave notes on passages and send them to the writer as
   one message, or edit the text and save it as a version of their own. `/artifacts` lists everyone's. See "Artifacts" in

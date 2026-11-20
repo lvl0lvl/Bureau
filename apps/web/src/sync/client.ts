@@ -561,6 +561,8 @@ export const api = {
     if (!res.ok) throw new HttpError(res.status, res.status === 404 ? 'This file is no longer there.' : 'This file could not be opened.');
     return await res.text();
   },
+  /** The owner opened it: no longer new, and a staff mark on it clears. Quiet: a miss changes nothing that matters. */
+  artifactSeen: (a: Artifact) => transport.http('POST', '/artifacts/seen', { staff: a.staffId, id: a.id }).catch(() => null),
   retireArtifact: (a: Artifact, retired: boolean) => command(() => transport.http<{ artifact: Artifact }>('POST', '/artifacts/retire', { staff: a.staffId, id: a.id, retired })),
   artifactToDrive: (a: Artifact, version?: string) => command(() => transport.http<{ to: string; already: boolean }>('POST', '/artifacts/drive', { staff: a.staffId, id: a.id, version })),
   deleteArtifact: (a: Artifact) => command(() => transport.http<{ files: number }>('POST', '/artifacts/delete', { staff: a.staffId, id: a.id })),

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { Artifact, Staff } from '@shared/contract.ts';
 import { parseFountain, spans } from '../lib/fountain.ts';
 import { plural, when } from '../lib/format.ts';
@@ -7,7 +7,7 @@ import { api } from '../sync/client.ts';
 import { toast, useIsPhone, useNow, useStaffList, useStore } from '../sync/store.ts';
 import { BackIcon, Bubble, Check, Chevron, SearchIcon } from './bits.tsx';
 import { Markdown } from './Markdown.tsx';
-import { EditView, findPassage, NoteComposer, NotesPanel, useNoteHighlights, useNotes, useSelectedPassage } from './ArtifactNotes.tsx';
+import { canMark, EditView, findPassage, NoteComposer, noteAtPoint, noteState, NotesPanel, useNoteHighlights, useNotes, useSelectedPassage } from './ArtifactNotes.tsx';
 
 /**
  * Artifacts: finished work staff keep for the owner. The newest few sit in a person's details,
@@ -126,6 +126,18 @@ export function ArtifactGlyph({ a }: { a: Artifact }) {
   );
 }
 
+/** New work, or work a member of staff marked for the owner, stands out until the owner opens it. */
+const standout = (a: Artifact) => (a.retiredAt ? '' : a.marked ? ' is-marked' : a.fresh ? ' is-new' : '');
+
+/** The words under a standout: who marked it and why, or that it is new. */
+function Standout({ a }: { a: Artifact }) {
+  const by = useStore((s) => (a.marked ? s.staff[a.marked.by]?.name : undefined));
+  if (a.retiredAt) return null;
+  if (a.marked) return <span className="standout-tag">{`Marked by ${by ?? 'staff'}${a.marked.why ? `: ${a.marked.why}` : ''}`}</span>;
+  if (a.fresh) return <span className="standout-tag">New</span>;
+  return null;
+}
+
 // ----------------------------------------------------------------- the aside
 
 const SHOWN = 4;
@@ -136,7 +148,9 @@ export function ArtifactsBlock({ staff }: { staff: Staff }) {
   const { list, error } = useArtifacts(staff.id);
   const current = (list ?? []).filter((a) => !a.retiredAt);
   const retired = (list ?? []).length - current.length;
-  const [first, ...rest] = current;
+  // Newest first, with anything marked for the owner on top so it is never folded away.
+  const marked = current.filter((a) => a.marked);
+  const shown = [...marked, ...current.filter((a) => !a.marked)].slice(0, Math.max(SHOWN, marked.length));
 
   return (
     <section className="aside-block">
@@ -163,25 +177,13 @@ export function ArtifactsBlock({ staff }: { staff: Staff }) {
           )}
         </p>
       )}
-      {first && (
-        <button className="artifact-card" onClick={() => openArtifact(staff.id, first.id)} aria-label={`Open ${first.title}`}>
-          <span className="artifact-thumb">
-            <span className="artifact-thumb-inner">
-              <ArtifactBody a={first} path={first.versions[0]!.path} thumb />
-            </span>
-          </span>
-          <span className="artifact-card-text">
-            <span className="duty-title">{first.title}</span>
-            <span className="duty-cadence">{meta(first, t)}</span>
-          </span>
-        </button>
-      )}
-      {rest.slice(0, SHOWN - 1).map((a) => (
-        <button key={a.id} className="artifact-row" onClick={() => openArtifact(staff.id, a.id)}>
+      {shown.map((a) => (
+        <button key={a.id} className={`artifact-row${standout(a)}`} onClick={() => openArtifact(staff.id, a.id)}>
           <ArtifactGlyph a={a} />
           <span className="grow">
             <span className="duty-title">{a.title}</span>
             <span className="duty-cadence">{meta(a, t)}</span>
+            <Standout a={a} />
           </span>
         </button>
       ))}
@@ -199,7 +201,6 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
   const phone = useIsPhone();
   const t = useNow(60_000);
   const staffMap = useStore((s) => s.staff);
-  const people = useStaffList();
   const { list, error } = useArtifacts(office ? undefined : staffId ?? undefined);
   const [query, setQuery] = useState('');
   const [showRetired, setShowRetired] = useState(id === '');
@@ -213,7 +214,8 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
   /** The notes column (on a phone, a sheet over the page), editing, and a note being written. */
   const [notesOpen, setNotesOpen] = useState<boolean | null>(null);
   const [editing, setEditing] = useState(false);
-  const [composing, setComposing] = useState<{ quote: string; before: string } | null>(null);
+  /** A note being written, or an existing one opened (`noteId`) by tapping its passage. */
+  const [composing, setComposing] = useState<{ quote: string; before: string; noteId?: string } | null>(null);
   const [activeNote, setActiveNote] = useState<string | null>(null);
 
   const all = list ?? [];
@@ -224,12 +226,27 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
   const retired = all.filter((a) => a.retiredAt && matches(a));
   const flat = [...current, ...(showRetired || chosen?.retiredAt ? retired : [])];
 
-  // Opened on the whole list: on a computer, show the newest one beside it.
+  // Opened on the whole list: on a computer, show the newest one beside it. That is not the owner
+  // opening it, so it stays new until they choose it.
+  const autoPicked = useRef<string | null>(null);
   useEffect(() => {
     if (!list || chosen || phone) return;
     const pick = (list.find((a) => !a.retiredAt) ?? list[0]);
-    if (pick) selectArtifact(pick.staffId, pick.id, office);
+    if (!pick) return;
+    autoPicked.current = `${pick.staffId}:${pick.id}`;
+    selectArtifact(pick.staffId, pick.id, office);
   }, [list, chosen, phone, office]);
+  const markSeen = (a: Artifact) => {
+    if (a.fresh || a.marked) void api.artifactSeen(a).then(changed);
+  };
+  useEffect(() => {
+    if (!chosen) return;
+    if (autoPicked.current === `${chosen.staffId}:${chosen.id}`) {
+      autoPicked.current = null;
+      return;
+    }
+    markSeen(chosen);
+  }, [chosen?.staffId, chosen?.id]);
   useEffect(() => {
     setVersion(null);
     setMenu(false);
@@ -244,6 +261,7 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
   }, [chosen?.retiredAt]);
 
   const pickIn = (a: Artifact) => {
+    if (a === chosen) markSeen(a);
     selectArtifact(a.staffId, a.id, office);
     setOnList(false);
   };
@@ -308,16 +326,45 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
     mo.observe(el, { childList: true, subtree: true });
     return () => mo.disconnect();
   }, [chosen?.id, v?.path, editing]);
-  useNoteHighlights(bodyRef, notable && !editing ? notes : [], activeNote, bodyReady);
+  const missing = useNoteHighlights(bodyRef, notable && !editing ? notes : [], activeNote, bodyReady);
   const saveNote = async (text: string) => {
     if (!chosen || !v || !composing) return false;
+    if (composing.noteId) {
+      const r = await api.updateArtifactNote(composing.noteId, { text });
+      if (!r) return false;
+      setComposing(null);
+      reloadNotes();
+      return true;
+    }
     const r = await api.addArtifactNote(chosen, { path: v.path, quote: composing.quote, before: composing.before, text });
     if (!r) return false;
     setComposing(null);
     setActiveNote(r.note.id);
     if (!phone) setNotesOpen(true);
     reloadNotes();
+    // Said at once, so a note never seems to have vanished: it is saved even when it cannot be marked.
+    if (composing.quote && !canMark()) toast('Note saved. This browser cannot mark passages on the page; the note and its quote are in Notes.');
+    else if (composing.quote && !findInBody(composing.quote, composing.before)) toast('Note saved, but the passage could not be marked on the page. The note and its quote are in Notes.');
     return true;
+  };
+  /** Tapping a marked passage opens its note, the same card as a new one. */
+  const openNoteAt = (e: ReactMouseEvent) => {
+    if (!notable || editing || composing) return;
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    const n = noteAtPoint(bodyRef.current, notes, e.clientX, e.clientY);
+    if (!n) return;
+    setActiveNote(n.id);
+    setComposing({ quote: n.quote, before: n.before, noteId: n.id });
+  };
+  const opened = composing?.noteId ? notes.find((n) => n.id === composing.noteId) : undefined;
+  const removeOpened = async () => {
+    if (!opened) return;
+    const ok = opened.sentAt ? await api.updateArtifactNote(opened.id, { done: true }) : await api.removeArtifactNote(opened.id);
+    if (!ok) return;
+    setComposing(null);
+    setActiveNote(null);
+    reloadNotes();
   };
   const pickNote = (n: (typeof notes)[number]) => {
     setActiveNote(n.id);
@@ -378,20 +425,20 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
   const row = (a: Artifact) => {
     const on = a === chosen;
     return (
-      <button key={`${a.staffId}:${a.id}`} data-key={`${a.staffId}:${a.id}`} className={`viewer-item${on ? ' on' : ''}${a.retiredAt ? ' retired' : ''}`} onClick={() => pickIn(a)} aria-current={on ? 'true' : undefined}>
+      <button key={`${a.staffId}:${a.id}`} data-key={`${a.staffId}:${a.id}`} className={`viewer-item${on ? ' on' : ''}${a.retiredAt ? ' retired' : ''}${standout(a)}`} onClick={() => pickIn(a)} aria-current={on ? 'true' : undefined}>
         <ArtifactGlyph a={a} />
         <span className="grow">
           <span className="viewer-item-title">{a.title}</span>
           <span className="viewer-item-meta">
+            {office ? `${staffMap[a.staffId]?.name ?? 'Staff'}, ` : ''}
             {a.folder ? `${a.folder}, ` : ''}
             {meta(a, t)}
           </span>
+          <Standout a={a} />
         </span>
       </button>
     );
   };
-
-  const groups = office ? people.map((p) => ({ p, items: current.filter((a) => a.staffId === p.id) })).filter((g) => g.items.length) : [{ p: null, items: current }];
 
   const sidebar = (
     <div className="viewer-list" ref={listRef}>
@@ -412,17 +459,7 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
       {error && <p className="empty" style={{ fontSize: 14 }}>{error}</p>}
       {list && all.length === 0 && <p className="empty" style={{ fontSize: 14 }}>Nothing here yet. Finished work staff keep for you shows here.</p>}
       {list && all.length > 0 && current.length === 0 && retired.length === 0 && <p className="empty" style={{ fontSize: 14 }}>Nothing matches “{query}”.</p>}
-      {groups.map((g) => (
-        <Fragment key={g.p?.id ?? 'one'}>
-          {g.p && (
-            <div className="viewer-group">
-              <Bubble staff={g.p} size={20} working={false} />
-              {g.p.name}
-            </div>
-          )}
-          {g.items.map(row)}
-        </Fragment>
-      ))}
+      {current.map(row)}
       {retired.length > 0 && (
         <>
           <button className="viewer-retired-toggle" onClick={() => setShowRetired((x) => !x)} aria-expanded={showRetired}>
@@ -551,7 +588,14 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
         />
       ) : (
         <div className={`viewer-split${showNotes && !phone ? ' with-notes' : ''}`}>
-          <div className={`viewer-body k-${chosen.kind}`} ref={bodyRef} onClick={() => setMenu(false)}>
+          <div
+            className={`viewer-body k-${chosen.kind}`}
+            ref={bodyRef}
+            onClick={(e) => {
+              setMenu(false);
+              openNoteAt(e);
+            }}
+          >
             <ArtifactBody key={`${chosen.staffId}:${v.path}:${v.modifiedAt}`} a={chosen} path={v.path} />
           </div>
           {showNotes && (
@@ -566,6 +610,7 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
               onWhole={() => setComposing({ quote: '', before: '' })}
               reload={reloadNotes}
               onClose={() => setNotesOpen(false)}
+              missing={missing}
             />
           )}
         </div>
@@ -588,7 +633,16 @@ export function ArtifactViewer({ staffId, id, office = false }: { staffId: strin
       )}
       {composing && (
         <div className={`note-composer-wrap${phone ? ' is-sheet' : ''}`} onClick={() => setComposing(null)}>
-          <NoteComposer quote={composing.quote} phone={phone} onSave={saveNote} onCancel={() => setComposing(null)} />
+          <NoteComposer
+            key={composing.noteId ?? 'new'}
+            quote={composing.quote}
+            phone={phone}
+            initial={opened?.text ?? ''}
+            sent={opened?.sentAt ? `${noteState(opened, chosen).label}. A sent note stays as it was; leave a new one to add to it.` : null}
+            onSave={saveNote}
+            onCancel={() => setComposing(null)}
+            onRemove={opened ? () => void removeOpened() : undefined}
+          />
         </div>
       )}
       {confirm && (
@@ -649,8 +703,8 @@ const TEXT_KINDS = new Set<Artifact['kind']>(['script', 'document', 'table', 'pa
 /** Kinds the owner can leave notes on and edit. The office allows the same. */
 const NOTABLE = new Set<Artifact['kind']>(['script', 'document', 'table', 'text']);
 
-/** One version, drawn the way its kind is read. `thumb` draws it small and still, for the details. */
-export function ArtifactBody({ a, path, thumb = false }: { a: Artifact; path: string; thumb?: boolean }) {
+/** One version, drawn the way its kind is read. */
+export function ArtifactBody({ a, path }: { a: Artifact; path: string }) {
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const size = a.versions.find((x) => x.path === path)?.size ?? 0;
@@ -670,55 +724,55 @@ export function ArtifactBody({ a, path, thumb = false }: { a: Artifact; path: st
   }, [a.staffId, path, a.kind, tooBig]);
   const url = api.artifactUrl(a.staffId, path);
 
-  if (failed) return <Paper thumb={thumb}><p className="empty">{failed}</p></Paper>;
-  if (tooBig && TEXT_KINDS.has(a.kind)) return <CannotShow a={a} thumb={thumb} why="This file is too large to show here." />;
+  if (failed) return <Paper><p className="empty">{failed}</p></Paper>;
+  if (tooBig && TEXT_KINDS.has(a.kind)) return <CannotShow a={a} why="This file is too large to show here." />;
 
   switch (a.kind) {
     case 'image':
-      return url ? <img className="artifact-image" src={url} alt={thumb ? '' : a.title} loading="lazy" /> : <CannotShow a={a} thumb={thumb} why="The sample office has no images." />;
+      return url ? <img className="artifact-image" src={url} alt={a.title} loading="lazy" /> : <CannotShow a={a} why="The sample office has no images." />;
     case 'pdf':
-      if (!url) return <CannotShow a={a} thumb={thumb} why="The sample office has no PDFs." />;
-      return thumb ? <CannotShow a={a} thumb why="" /> : <PdfView url={url} />;
+      if (!url) return <CannotShow a={a} why="The sample office has no PDFs." />;
+      return <PdfView url={url} />;
     case 'sheet':
     case 'file':
-      return <CannotShow a={a} thumb={thumb} why={a.kind === 'sheet' ? 'A spreadsheet in this format cannot be shown here. Save it to Drive to open it in Google Sheets, or download it.' : 'This kind of file cannot be shown here. Save it to Drive or download it to open it.'} />;
+      return <CannotShow a={a} why={a.kind === 'sheet' ? 'A spreadsheet in this format cannot be shown here. Save it to Drive to open it in Google Sheets, or download it.' : 'This kind of file cannot be shown here. Save it to Drive or download it to open it.'} />;
   }
-  if (text === null) return <Paper thumb={thumb}><p className="muted">{thumb ? '' : 'Opening'}</p></Paper>;
+  if (text === null) return <Paper><p className="muted">Opening</p></Paper>;
   switch (a.kind) {
     case 'script':
-      return <Paper thumb={thumb} script><Screenplay text={text} /></Paper>;
+      return <Paper script><Screenplay text={text} /></Paper>;
     case 'document':
       return (
-        <Paper thumb={thumb}>
+        <Paper>
           <div className="doc msg artifact-doc">
             <Markdown text={text} />
           </div>
         </Paper>
       );
     case 'table':
-      return <TableView text={text} tab={a.ext === 'tsv'} thumb={thumb} />;
+      return <TableView text={text} tab={a.ext === 'tsv'} />;
     case 'page':
-      return <PageFrame html={text} title={a.title} thumb={thumb} />;
+      return <PageFrame html={text} title={a.title} />;
     default:
       return (
-        <Paper thumb={thumb}>
+        <Paper>
           <pre className="doc mono artifact-text">{text}</pre>
         </Paper>
       );
   }
 }
 
-function Paper({ children, thumb, script }: { children: ReactNode; thumb?: boolean; script?: boolean }) {
-  return <div className={`artifact-page${script ? ' script' : ''}${thumb ? ' thumb' : ''}`}>{children}</div>;
+function Paper({ children, script }: { children: ReactNode; script?: boolean }) {
+  return <div className={`artifact-page${script ? ' script' : ''}`}>{children}</div>;
 }
 
-function CannotShow({ a, why, thumb }: { a: Artifact; why: string; thumb?: boolean }) {
+function CannotShow({ a, why }: { a: Artifact; why: string }) {
   return (
-    <div className={`artifact-cannot${thumb ? ' thumb' : ''}`}>
+    <div className="artifact-cannot">
       <span className="artifact-glyph big" aria-hidden="true">
         <i>{a.ext.slice(0, 5) || 'File'}</i>
       </span>
-      {!thumb && <p>{why}</p>}
+      <p>{why}</p>
     </div>
   );
 }
@@ -852,14 +906,14 @@ export function parseDelimited(text: string, sep: string): string[][] {
 
 const NUMBER = /^[-+(]?[$€£]?\s?[\d,]+(\.\d+)?%?\)?$/;
 
-function TableView({ text, tab, thumb }: { text: string; tab: boolean; thumb?: boolean }) {
+function TableView({ text, tab }: { text: string; tab: boolean }) {
   const rows = useMemo(() => parseDelimited(text, tab ? '\t' : ','), [text, tab]);
-  const LIMIT = thumb ? 14 : 2000;
+  const LIMIT = 2000;
   const [head, ...body] = rows;
-  if (!head) return <Paper thumb={thumb}><p className="empty">This table is empty.</p></Paper>;
+  if (!head) return <Paper><p className="empty">This table is empty.</p></Paper>;
   const numeric = head.map((_, c) => body.slice(0, 50).every((r) => !r[c]?.trim() || NUMBER.test(r[c]!.trim())));
   return (
-    <div className={`artifact-table-wrap${thumb ? ' thumb' : ''}`}>
+    <div className="artifact-table-wrap">
       <table className="artifact-table">
         <thead>
           <tr>
@@ -882,7 +936,7 @@ function TableView({ text, tab, thumb }: { text: string; tab: boolean; thumb?: b
           ))}
         </tbody>
       </table>
-      {!thumb && body.length > LIMIT && <p className="muted" style={{ padding: '10px 0', fontSize: 13 }}>The first {LIMIT} of {body.length} rows. Download it for the rest.</p>}
+      {body.length > LIMIT && <p className="muted" style={{ padding: '10px 0', fontSize: 13 }}>The first {LIMIT} of {body.length} rows. Download it for the rest.</p>}
     </div>
   );
 }
@@ -903,9 +957,9 @@ export function sealPage(html: string): string {
   return `<!doctype html><html><head>${SEAL}</head><body>${html}</body></html>`;
 }
 
-function PageFrame({ html, title, thumb }: { html: string; title: string; thumb?: boolean }) {
+function PageFrame({ html, title }: { html: string; title: string }) {
   const doc = useMemo(() => sealPage(html), [html]);
-  return <iframe className={`artifact-frame${thumb ? ' thumb' : ''}`} sandbox="allow-scripts" srcDoc={doc} title={title} tabIndex={thumb ? -1 : undefined} loading="lazy" />;
+  return <iframe className="artifact-frame" sandbox="allow-scripts" srcDoc={doc} title={title} loading="lazy" />;
 }
 
 // ------------------------------------------------------------------ the page
@@ -914,6 +968,7 @@ function PageFrame({ html, title, thumb }: { html: string; title: string; thumb?
 export function ArtifactsPage() {
   const t = useNow(60_000);
   const people = useStaffList();
+  const staffMap = useStore((s) => s.staff);
   const { list, error } = useArtifacts();
   const sel = useArtifactParam();
   const current = (list ?? []).filter((a) => !a.retiredAt);
@@ -931,32 +986,32 @@ export function ArtifactsPage() {
           <b>Nothing kept yet.</b> When someone finishes a script, a report or a chart, it shows here and beside their conversation.
         </p>
       )}
-      <div className="artifact-people">
-        {people
-          .map((p) => ({ p, items: current.filter((a) => a.staffId === p.id) }))
-          .filter((g) => g.items.length)
-          .map(({ p, items }) => (
-            <section key={p.id} className="aside-block">
-              <div className="aside-head" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
-                <Bubble staff={p} size={24} working={false} />
-                <h2 className="aside-title">{p.name}</h2>
-                <span className="aside-meta">{plural(items.length, 'artifact')}</span>
-              </div>
-              {items.map((a) => (
-                <button key={a.id} className="artifact-row" onClick={() => openArtifact(p.id, a.id, true)}>
-                  <ArtifactGlyph a={a} />
-                  <span className="grow">
-                    <span className="duty-title">{a.title}</span>
-                    <span className="duty-cadence">
-                      {a.folder ? `${a.folder}, ` : ''}
-                      {meta(a, t)}
-                    </span>
+      {current.length > 0 && (
+        <div className="artifact-list">
+          {current.map((a) => {
+            const p = staffMap[a.staffId];
+            return (
+              <button key={`${a.staffId}:${a.id}`} className={`artifact-row${standout(a)}`} onClick={() => openArtifact(a.staffId, a.id, true)}>
+                <ArtifactGlyph a={a} />
+                <span className="grow">
+                  <span className="duty-title">{a.title}</span>
+                  <span className="duty-cadence">
+                    {a.folder ? `${a.folder}, ` : ''}
+                    {meta(a, t)}
                   </span>
-                </button>
-              ))}
-            </section>
-          ))}
-      </div>
+                  <Standout a={a} />
+                </span>
+                {p && (
+                  <span className="artifact-by">
+                    <Bubble staff={p} size={20} working={false} />
+                    <span>{p.name}</span>
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {retired > 0 && (
         <p className="muted" style={{ fontSize: 14 }}>
           {plural(retired, 'artifact')} retired.{' '}

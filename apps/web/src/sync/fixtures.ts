@@ -467,6 +467,9 @@ export function createFixtures(query: URLSearchParams): Transport {
   ];
   const retired = new Map<string, number>();
   const gone = new Set<string>();
+  /** Opened by the owner, and marked by staff for the owner: the sample shows one of each kind of standout. */
+  const seen = new Set<string>(['tally:october-summary.md', 'tally:invoices/Invoice-0042.pdf']);
+  const marks = new Map<string, { at: number; by: string; why: string | null }>([['atlas:northbeam-portfolio.md', { at: at(9, 5), by: 'wren', why: 'the portfolio review you asked about' }]]);
   /** Text for the sample files that are read in the viewer, and versions the owner saved. */
   const libraryText: Record<string, string> = {
     'tally:october-summary.md': `# October in brief
@@ -1050,9 +1053,14 @@ I moved $3,700 to the tax account, which keeps the quarter on track for the Janu
             const slash = f.path.lastIndexOf('/');
             const mine = ownerVersions.get(`${f.staffId}:${f.path}`) ?? [];
             const versions: ArtifactVersion[] = [...mine, { path: f.path, size: f.size, modifiedAt: f.modifiedAt, label: mine.length ? 'Version 1' : 'Only version' }];
-            return { id: f.path, staffId: f.staffId, title: f.path.slice(slash + 1, -(ext.length + 1)).replace(/[-_]/g, ' '), folder: slash > 0 ? f.path.slice(0, slash) : '', kind, ext, versions, modifiedAt: versions[0]!.modifiedAt, retiredAt: retired.get(`${f.staffId}:${f.path}`) ?? null, drive: [] };
+            return { id: f.path, staffId: f.staffId, title: f.path.slice(slash + 1, -(ext.length + 1)).replace(/[-_]/g, ' '), folder: slash > 0 ? f.path.slice(0, slash) : '', kind, ext, versions, modifiedAt: versions[0]!.modifiedAt, retiredAt: retired.get(`${f.staffId}:${f.path}`) ?? null, drive: [], fresh: !seen.has(`${f.staffId}:${f.path}`), marked: marks.get(`${f.staffId}:${f.path}`) ?? null };
           }),
       };
+    }
+    if (is('POST', 'artifacts', 'seen')) {
+      seen.add(`${body?.staff}:${body?.id}`);
+      marks.delete(`${body?.staff}:${body?.id}`);
+      return { ok: true };
     }
     if (is('GET', 'artifacts', 'notes')) return { notes: artifactNotes.filter((n) => n.staffId === q.get('staff') && n.artifactId === q.get('id')) };
     if (is('POST', 'artifacts', 'notes')) {

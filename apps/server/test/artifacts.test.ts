@@ -172,3 +172,42 @@ test('deleting removes every version and the folder it leaves empty', async () =
   // The copies in Drive are the owner's and stay.
   assert.ok(fs.existsSync(path.join(driveDir, 'From staff')));
 });
+
+test('new work stands out until the owner opens it; work from before counts as seen', async () => {
+  const old = Date.now() - 86_400_000;
+  write('Old memo.md', '# Old', old);
+  // The first listing sets where "new" starts, so an office's existing work is not all new.
+  assert.equal(app.artifacts.get(who, 'Old memo.md')!.fresh, false);
+  await new Promise((res) => setTimeout(res, 5));
+  write('Fresh memo.md', '# Fresh');
+  assert.equal(app.artifacts.get(who, 'Fresh memo.md')!.fresh, true);
+  await new Promise((res) => setTimeout(res, 5));
+  const r = await post('/artifacts/seen', { staff: who, id: 'Fresh memo.md' });
+  assert.equal(r.status, 200);
+  assert.equal(app.artifacts.get(who, 'Fresh memo.md')!.fresh, false);
+  // A new version from staff makes it new again; one the owner saved does not.
+  write('Fresh memo v2.md', '# Fresh again', Date.now() + 5000);
+  assert.equal(app.artifacts.get(who, 'Fresh memo.md')!.fresh, true);
+});
+
+test('staff mark pieces for the owner by path or title; the mark clears when opened', async () => {
+  write('Budget 2027 v2 - 2026-11-19.csv', 'a,b\n1,2\n', Date.now() - 60_000);
+  const chief = app.store.list('staff').find((s) => s.isChief)!;
+  const r = { staffId: who, outside: new Set<string>(), origin: 'test', depth: 0 };
+  const mine = (app.turns as any).deps.buildTools(r) as { name: string; shape: Record<string, unknown>; run: (a: any) => Promise<string> }[];
+  const mark = mine.find((t) => t.name === 'mark_artifacts')!;
+  assert.equal('staff' in mark.shape, false, 'only the chief of staff marks in other libraries');
+  const out = await mark.run({ pieces: ['library/Budget 2027 v2 - 2026-11-19.csv', 'Old memo', 'No such thing'], why: 'the budget you asked about' });
+  assert.match(out, /Marked for .*“Budget 2027”, “Old memo”/);
+  assert.match(out, /Not found in your library: No such thing\. What is there:/);
+  const a = app.artifacts.get(who, 'Budget 2027 - 2026-11-19.csv')!;
+  assert.deepEqual({ by: a.marked?.by, why: a.marked?.why }, { by: who, why: 'the budget you asked about' });
+
+  const chiefTools = (app.turns as any).deps.buildTools({ ...r, staffId: chief.id }) as typeof mine;
+  const name = app.store.get('staff', who)!.name;
+  assert.match(await chiefTools.find((t) => t.name === 'mark_artifacts')!.run({ pieces: ['Fresh memo'], staff: name }), /Marked for/);
+  assert.equal(app.artifacts.get(who, 'Fresh memo.md')!.marked?.by, chief.id);
+
+  await post('/artifacts/seen', { staff: who, id: a.id });
+  assert.equal(app.artifacts.get(who, a.id)!.marked, null);
+});

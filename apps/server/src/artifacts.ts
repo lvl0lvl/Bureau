@@ -53,6 +53,10 @@ interface Meta {
   drive?: { path: string; to: string; at: number }[];
   /** Versions the owner wrote by editing in the app. */
   ownerEdits?: string[];
+  /** When the owner last opened it. */
+  seenAt?: number;
+  /** A member of staff marked it for the owner. */
+  marked?: { at: number; by: string; why: string | null } | null;
 }
 
 /** Kinds the owner can leave notes on and edit as text. */
@@ -97,12 +101,23 @@ export class Artifacts {
     const id = `${staffId}:${key}`;
     const m: Meta = structuredClone(this.deps.store.getPrivate<Meta>('_artifact', id) ?? { id });
     fn(m);
-    if (!m.retiredAt && !m.drive?.length && !m.ownerEdits?.length) this.deps.store.delPrivate('_artifact', id);
+    if (!m.retiredAt && !m.drive?.length && !m.ownerEdits?.length && !m.seenAt && !m.marked) this.deps.store.delPrivate('_artifact', id);
     else this.deps.store.putPrivate('_artifact', m);
+  }
+
+  /**
+   * Work older than this counts as seen, so an office that had artifacts before "new" was kept
+   * does not show every one of them as new. Set the first time it is asked for.
+   */
+  private since(): number {
+    const b = this.deps.store.getPrivate<{ id: string; at: number }>('_artifactSince', 'since');
+    if (b) return b.at;
+    return this.deps.store.putPrivate('_artifactSince', { id: 'since', at: Date.now() }).at;
   }
 
   /** Every artifact of one person, or of everyone, newest first. */
   list(staffId?: string): Artifact[] {
+    const since = this.since();
     const people = this.deps.store.list('staff').filter((s) => !s.retired && (!staffId || s.id === staffId));
     const out: Artifact[] = [];
     for (const s of people) {
@@ -131,6 +146,9 @@ export class Artifacts {
         const versions = g.versions.sort((a, b) => b.n - a.n || b.modifiedAt - a.modifiedAt);
         const total = versions.length;
         const meta = this.meta(s.id, key);
+        const edits = meta?.ownerEdits ?? [];
+        const fromStaff = Math.max(0, ...versions.filter((v) => !edits.includes(v.path)).map((v) => v.modifiedAt));
+        const retiredAt = meta?.retiredAt ?? null;
         out.push({
           id: key,
           staffId: s.id,
@@ -140,8 +158,10 @@ export class Artifacts {
           ext: path.extname(key).slice(1).toLowerCase(),
           versions: versions.map(({ n: _n, ...v }, i) => ({ ...v, label: total > 1 ? `Version ${total - i}` : 'Only version', ...(meta?.ownerEdits?.includes(v.path) ? { byOwner: true } : {}) })),
           modifiedAt: Math.max(...versions.map((v) => v.modifiedAt)),
-          retiredAt: meta?.retiredAt ?? null,
+          retiredAt,
           drive: meta?.drive ?? [],
+          fresh: !retiredAt && fromStaff > (meta?.seenAt ?? since),
+          marked: retiredAt ? null : meta?.marked ?? null,
         });
       }
     }
@@ -164,6 +184,44 @@ export class Artifacts {
     if (!r || r.startsWith('..') || path.isAbsolute(r)) return null;
     if (!fs.statSync(real).isFile()) return null;
     return real;
+  }
+
+  /** The owner opened it: it is no longer new, and a mark staff put on it has done its job. */
+  seen(staffId: string, id: string): Artifact {
+    const a = this.need(staffId, id);
+    if (a.fresh || a.marked || !this.meta(staffId, a.id)?.seenAt) {
+      this.saveMeta(staffId, a.id, (m) => {
+        m.seenAt = Date.now();
+        m.marked = null;
+      });
+    }
+    return this.get(staffId, id)!;
+  }
+
+  /**
+   * Mark pieces so they stand out for the owner. Each name is matched against the piece's path
+   * in the library, any of its versions' paths, or its title, ignoring case. Returns what was
+   * marked and the names that matched nothing.
+   */
+  mark(staffId: string, names: string[], by: string, why: string | null): { marked: Artifact[]; unknown: string[] } {
+    const list = this.list(staffId).filter((a) => !a.retiredAt);
+    const norm = (s: string) => s.trim().replace(/^library\//, '').toLowerCase();
+    const marked: Artifact[] = [];
+    const unknown: string[] = [];
+    for (const name of names) {
+      const n = norm(name);
+      const a = list.find((x) => x.id.toLowerCase() === n || x.versions.some((v) => v.path.toLowerCase() === n)) ?? list.find((x) => x.title.toLowerCase() === n);
+      if (!a) {
+        unknown.push(name);
+        continue;
+      }
+      if (marked.includes(a)) continue;
+      this.saveMeta(staffId, a.id, (m) => {
+        m.marked = { at: Date.now(), by, why };
+      });
+      marked.push(a);
+    }
+    return { marked, unknown };
   }
 
   retire(staffId: string, id: string, retired: boolean): Artifact {

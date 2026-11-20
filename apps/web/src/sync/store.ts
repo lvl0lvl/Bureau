@@ -316,6 +316,12 @@ export function useStaffList(): Staff[] {
   return useMemo(() => Object.values(staff).filter((s) => !s.retired).sort((a, b) => a.order - b.order), [staff]);
 }
 
+/** The chief of staff first, then whoever was active most recently. The sidebar's order. */
+export function useStaffByActivity(): Staff[] {
+  const list = useStaffList();
+  return useMemo(() => [...list].sort((a, b) => Number(b.isChief) - Number(a.isChief) || (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0) || a.order - b.order), [list]);
+}
+
 /**
  * Staff in the order the owner most likely wants them: the chief of staff, then whoever is
  * waiting on the owner, then whoever is working, then the most recently active.

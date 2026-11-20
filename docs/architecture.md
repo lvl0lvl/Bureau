@@ -328,12 +328,11 @@ Finished work staff keep for the owner is whatever they write in their own `libr
 in a name ("Cold open v3 - 2026-11-16.fountain", "budget_v2.csv", "notes (v4).md") makes files
 versions of one piece; a file with no mark is version 1. Links are not followed.
 
-- **Where they show.** In a person's details, under Open work: the newest drawn small (a true
-  thumbnail: the real view at twice the size, scaled down) and the next three as rows. Any of them
-  opens the viewer, which is as large as the window, with that person's list beside it (search
+- **Where they show.** In a person's details, under Open work: the newest four as rows, with
+  anything marked for the owner on top. Any of them opens the viewer, which is as large as the window, with that person's list beside it (search
   past six, retired ones folded at the end), a version menu, Save to Drive, and a menu with
-  Download, Retire and Delete. `/artifacts` (once the Library) is the same for the whole office,
-  by person. The viewer's address is `?artifact=<id>` (and `&staff=` on `/artifacts`), so the
+  Download, Retire and Delete. `/artifacts` (once the Library) is the same for the whole office:
+  one list, newest first, each row naming the writer. The viewer's address is `?artifact=<id>` (and `&staff=` on `/artifacts`), so the
   back button closes it. On a phone the list and the document take the screen in turn.
 - **How each kind is drawn.** `.fountain` as a script (`apps/web/src/lib/fountain.ts`: title page,
   scene headings, dialogue, transitions); `.md` as a document; `.csv`/`.tsv` as a table; images;
@@ -359,6 +358,16 @@ versions of one piece; a file with no mark is version 1. Links are not followed.
   screen; saving writes the next version in the writer's `library/` (never over a file) and marks
   it the owner's, which the version menu shows as "yours" and the next message to the writer
   points at. Notes are private `_artifactNote` docs and go when the piece is deleted.
+- **New and marked.** A piece with a version from staff the owner has not opened has a
+  highlighted border and "New". Staff can mark pieces for the owner with `mark_artifacts` (the
+  chief of staff in anyone's library), for "which one is the budget?"; a marked piece stands out
+  the same way and says who marked it and why. Opening it in the viewer clears both
+  (`POST /artifacts/seen`, `seenAt` and `marked` in the `_artifact` doc); the computer picking the
+  newest piece to show beside the list does not count. Work older than the first listing after
+  this was built (`_artifactSince`) counts as seen.
+- **Editing a note.** Tapping a marked passage opens its note in the same card as a new one, to
+  change or remove it; a sent note shows where it stands and can be put away. A note whose passage
+  cannot be found on the page says so in its card.
 - The list loads again when that person finishes a turn, after anything the owner does in the
   viewer, and when the app comes back to the front. It always loads the first time, even while
   someone is working.

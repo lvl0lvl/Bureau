@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { Link, navigate, type Route } from '../lib/router.tsx';
 import { MAX_PHOTO, namedFiles, namedPhotos } from '../lib/photo.ts';
 import { api } from '../sync/client.ts';
-import { toast, useChief, useOpenWorkCount, usePendingCount, useStaffList, useStore } from '../sync/store.ts';
+import { toast, useChief, useOpenWorkCount, usePendingCount, useStaffByActivity, useStore } from '../sync/store.ts';
 import { HttpError } from '../sync/transport.ts';
 import { UsageMeter, UsageStrip } from './Usage.tsx';
 import { Bubble, CameraIcon, Me, MicIcon, PlusIcon, SendIcon, Wordmark } from './bits.tsx';
@@ -19,7 +19,7 @@ const NAV: { to: string; name: Route['name']; label: string }[] = [
 ];
 
 function Sidebar({ route }: { route: Route }) {
-  const staff = useStaffList();
+  const staff = useStaffByActivity();
   const pending = usePendingCount();
   const openWork = useOpenWorkCount();
   const slips = useStore((s) => s.slips);

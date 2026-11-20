@@ -740,6 +740,13 @@ export interface Artifact {
   retiredAt: number | null;
   /** Copies the owner saved to the office Drive folder. */
   drive: { path: string; to: string; at: number }[];
+  /** A version from staff the owner has not opened yet. Clears when the owner opens it. */
+  fresh: boolean;
+  /**
+   * Set when a member of staff marked it for the owner, for example to answer "which one is the
+   * budget?". `by` is a staff id. Clears when the owner opens it.
+   */
+  marked: { at: number; by: string; why: string | null } | null;
 }
 
 /** Counts for one stretch of seven days, for the office or for one person. */

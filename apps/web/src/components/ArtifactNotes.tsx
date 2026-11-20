@@ -75,6 +75,42 @@ export function findPassage(root: Node, quote: string, before: string): Range | 
   return r;
 }
 
+/** The element the document is drawn in, inside the viewer's body. */
+export const pageOf = (root: HTMLElement | null | undefined): HTMLElement | null => root?.querySelector<HTMLElement>('.artifact-page, .artifact-table-wrap') ?? null;
+
+/** The note whose marked passage holds this point on screen, if any. The shortest passage wins. */
+export function noteAtPoint(root: HTMLElement | null, notes: ArtifactNote[], x: number, y: number): ArtifactNote | null {
+  const page = pageOf(root);
+  if (!page) return null;
+  const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
+  let node: Node | null = null;
+  let offset = 0;
+  if (doc.caretPositionFromPoint) {
+    const p = doc.caretPositionFromPoint(x, y);
+    if (p) [node, offset] = [p.offsetNode, p.offset];
+  } else if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(x, y);
+    if (r) [node, offset] = [r.startContainer, r.startOffset];
+  }
+  if (!node || !page.contains(node)) return null;
+  let best: { n: ArtifactNote; len: number } | null = null;
+  for (const n of notes) {
+    if (n.doneAt || !n.quote) continue;
+    const r = findPassage(page, n.quote, n.before);
+    if (!r) continue;
+    let inside = false;
+    try {
+      inside = r.isPointInRange(node, offset);
+    } catch {
+      inside = false;
+    }
+    if (!inside) continue;
+    const len = r.toString().length;
+    if (!best || len < best.len) best = { n, len };
+  }
+  return best?.n ?? null;
+}
+
 type HighlightRegistry = { set(name: string, h: unknown): void; delete(name: string): void };
 const registry = (): HighlightRegistry | null => (globalThis.CSS as unknown as { highlights?: HighlightRegistry })?.highlights ?? null;
 const makeHighlight = (ranges: Range[]): unknown => {
@@ -82,20 +118,31 @@ const makeHighlight = (ranges: Range[]): unknown => {
   return H ? new H(...ranges) : null;
 };
 
-/** Mark the passages of these notes on the page; `active` is drawn stronger. */
-export function useNoteHighlights(root: RefObject<HTMLElement | null>, notes: ArtifactNote[], active: string | null, ready: unknown) {
+/**
+ * Mark the passages of these notes on the page; `active` is drawn stronger. Returns the ids of
+ * notes whose passage is not on the page as drawn, so the notes list can say so instead of
+ * leaving a note with no mark and no reason.
+ */
+export function useNoteHighlights(root: RefObject<HTMLElement | null>, notes: ArtifactNote[], active: string | null, ready: unknown): Set<string> {
+  const [missing, setMissing] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    const reg = registry();
-    const el = root.current?.querySelector('.artifact-page, .artifact-table-wrap') ?? null;
-    if (!reg || !el) return;
+    const el = pageOf(root.current);
+    if (!el) return;
     const all: Range[] = [];
     const strong: Range[] = [];
+    const lost = new Set<string>();
     for (const n of notes) {
       if (n.doneAt || !n.quote) continue;
       const r = findPassage(el, n.quote, n.before);
-      if (!r) continue;
+      if (!r) {
+        lost.add(n.id);
+        continue;
+      }
       (n.id === active ? strong : all).push(r);
     }
+    setMissing((prev) => (prev.size === lost.size && [...lost].every((x) => prev.has(x)) ? prev : lost));
+    const reg = registry();
+    if (!reg) return;
     const a = makeHighlight(all);
     const b = makeHighlight(strong);
     if (a) reg.set('bureau-note', a);
@@ -105,7 +152,11 @@ export function useNoteHighlights(root: RefObject<HTMLElement | null>, notes: Ar
       reg.delete('bureau-note-active');
     };
   }, [root, notes, active, ready]);
+  return missing;
 }
+
+/** Whether this browser can mark passages at all (Safari before 17.2 cannot). */
+export const canMark = () => !!registry() && !!(globalThis as unknown as { Highlight?: unknown }).Highlight;
 
 // ------------------------------------------------------------ the selection
 
@@ -124,13 +175,13 @@ export function useSelectedPassage(root: RefObject<HTMLElement | null>, enabled:
   useEffect(() => {
     if (!enabled) return setPicked(null);
     const look = () => {
+      if (holding.current) return;
       const sel = document.getSelection();
-      const page = root.current?.querySelector('.artifact-page, .artifact-table-wrap');
+      const page = pageOf(root.current);
       if (clearTimer.current) window.clearTimeout(clearTimer.current);
-      if (sel && sel.rangeCount && !sel.isCollapsed && page && page.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-        const r = sel.getRangeAt(0);
-        const quote = sel.toString().trim();
-        if (!quote) return;
+      const r = sel && sel.rangeCount && !sel.isCollapsed && page ? clipTo(sel.getRangeAt(0), page) : null;
+      const quote = r?.toString().trim();
+      if (r && page && quote) {
         const pre = document.createRange();
         pre.setStart(page, 0);
         pre.setEnd(r.startContainer, r.startOffset);
@@ -138,8 +189,8 @@ export function useSelectedPassage(root: RefObject<HTMLElement | null>, enabled:
         setPicked({ quote, before: pre.toString().slice(-80), rect: { top: box.top, left: box.left, bottom: box.bottom, width: box.width } });
         return;
       }
-      if (holding.current) return;
-      clearTimer.current = window.setTimeout(() => setPicked(null), 350);
+      // A phone clears the selection as the button is touched; keep the passage long enough to use it.
+      clearTimer.current = window.setTimeout(() => !holding.current && setPicked(null), 700);
     };
     document.addEventListener('selectionchange', look);
     return () => {
@@ -149,6 +200,7 @@ export function useSelectedPassage(root: RefObject<HTMLElement | null>, enabled:
   }, [root, enabled]);
   const hold = useCallback(() => {
     holding.current = true;
+    if (clearTimer.current) window.clearTimeout(clearTimer.current);
   }, []);
   const done = useCallback(() => {
     holding.current = false;
@@ -158,30 +210,76 @@ export function useSelectedPassage(root: RefObject<HTMLElement | null>, enabled:
   return [picked, hold, done];
 }
 
+/** The part of a selection that falls inside the page, or null when none of it does. */
+function clipTo(r: Range, page: Node): Range | null {
+  const inStart = page.contains(r.startContainer);
+  const inEnd = page.contains(r.endContainer);
+  if (inStart && inEnd) return r;
+  const c = r.cloneRange();
+  if (!r.intersectsNode(page)) return null;
+  if (!inStart) c.setStart(page, 0);
+  if (!inEnd) c.setEnd(page, page.childNodes.length);
+  return c.collapsed ? null : c;
+}
+
 // ------------------------------------------------------------ the composer
 
-export function NoteComposer({ quote, phone, onSave, onCancel }: { quote: string; phone: boolean; onSave: (text: string) => Promise<boolean>; onCancel: () => void }) {
-  const [text, setText] = useState('');
+export function NoteComposer({
+  quote,
+  phone,
+  initial = '',
+  sent = null,
+  onSave,
+  onCancel,
+  onRemove,
+}: {
+  quote: string;
+  phone: boolean;
+  /** The note's text when an existing note is opened. */
+  initial?: string;
+  /** Set when the note was already sent and can no longer change: says where it stands. */
+  sent?: string | null;
+  onSave: (text: string) => Promise<boolean>;
+  onCancel: () => void;
+  /** Remove an unsent note, or put a sent one away. */
+  onRemove?: () => void;
+}) {
+  const editing = !!initial;
+  const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
-    ref.current?.focus();
-  }, []);
+    const el = ref.current;
+    if (!el || sent) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [sent]);
+  // The box grows with the note, up to a limit set in the styles, then scrolls.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [text]);
+  const unchanged = text.trim() === initial.trim();
   const save = async () => {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || sent) return;
+    if (editing && unchanged) return onCancel();
     setBusy(true);
     const ok = await onSave(text.trim());
     setBusy(false);
-    if (ok) setText('');
+    if (ok && !editing) setText('');
   };
   return (
-    <div className={`note-composer${phone ? ' is-sheet' : ''}`} role="dialog" aria-label="New note" onClick={(e) => e.stopPropagation()}>
+    <div className={`note-composer${phone ? ' is-sheet' : ''}`} role="dialog" aria-label={editing ? 'Your note' : 'New note'} onClick={(e) => e.stopPropagation()}>
       {quote ? <blockquote className="note-quote">{clip(quote, 280)}</blockquote> : <p className="note-whole">A note on the whole piece</p>}
+      {sent && <p className="note-sent">{sent}</p>}
       <textarea
         ref={ref}
         className="input note-text"
         value={text}
-        rows={3}
+        rows={4}
+        readOnly={!!sent}
         placeholder="Your note"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -193,12 +291,19 @@ export function NoteComposer({ quote, phone, onSave, onCancel }: { quote: string
         }}
       />
       <div className="row note-composer-acts">
+        {onRemove && (
+          <button className="btn btn-quiet btn-sm note-remove" onClick={onRemove}>
+            {sent ? 'Put away' : 'Remove'}
+          </button>
+        )}
         <button className="btn btn-soft btn-sm" onClick={onCancel}>
-          Cancel
+          {sent ? 'Close' : 'Cancel'}
         </button>
-        <button className="btn btn-blue btn-sm" disabled={!text.trim() || busy} onClick={() => void save()}>
-          {busy ? 'Saving' : 'Add note'}
-        </button>
+        {!sent && (
+          <button className="btn btn-blue btn-sm" disabled={!text.trim() || busy} onClick={() => void save()}>
+            {busy ? 'Saving' : editing ? 'Save note' : 'Add note'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -219,6 +324,7 @@ export function NotesPanel({
   onWhole,
   reload,
   onClose,
+  missing,
 }: {
   a: Artifact;
   writer: Staff | undefined;
@@ -230,6 +336,8 @@ export function NotesPanel({
   onWhole: () => void;
   reload: () => void;
   onClose: () => void;
+  /** Notes whose passage is not on the page as it is drawn now. */
+  missing: Set<string>;
 }) {
   const [sending, setSending] = useState(false);
   const shown = notes.filter((n) => !n.doneAt);
@@ -272,6 +380,7 @@ export function NotesPanel({
                   <span className="note-body">{n.text}</span>
                   <span className="note-meta">
                     {n.path !== shownPath ? `${label(n.path)}. ` : ''}
+                    {missing.has(n.id) && n.path === shownPath ? 'The passage could not be marked on the page; the note and its quote are kept. ' : ''}
                     {st.label}
                   </span>
                 </button>
