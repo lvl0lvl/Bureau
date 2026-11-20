@@ -297,10 +297,16 @@ export function buildTools(deps: ToolsDeps, r: Running): AppTool[] {
   if (artifacts) {
     tools.push({
       name: 'mark_artifacts',
-      description: `Make pieces in a library stand out for ${owner()} in the app's lists of artifacts, with a highlighted border, until ${owner()} opens them. Use it when ${owner()} asks which one is which ("which one is the budget?") and may not know the file name: mark every piece that matches and say in your reply that they are marked. Name each piece by its path in library/ (any version's file will do) or by its title.${me().isChief ? ' As chief of staff you can mark pieces in someone else\'s library by naming them in staff.' : ''}`,
+      description: `Make pieces in a library stand out for ${owner()} in the app's lists of artifacts, with a highlighted border, until ${owner()} opens them. Use it when ${owner()} asks which one is which ("which one is the budget?") and may not know the file name: mark every piece that matches and say in your reply that they are marked. Name each piece by its path in library/ (any version's file will do) or by its title, and give each its own few words when they differ ("for your review", "for your rewrite").${me().isChief ? ' As chief of staff you can mark pieces in someone else\'s library by naming them in staff.' : ''}`,
       shape: {
-        pieces: z.array(z.string().min(1).max(300)).min(1).max(12).describe('Paths in library/, such as "Cold open v3 - 2026-11-16.fountain", or titles.'),
-        why: z.string().max(120).optional().describe(`A few words shown with the mark, such as "the budget you asked about".`),
+        pieces: z.array(z.union([
+          z.string().min(1).max(300),
+          z.object({
+            piece: z.string().min(1).max(300).describe('Its path in library/, such as "Cold open v3 - 2026-11-16.fountain", or its title.'),
+            why: z.string().max(120).optional().describe('A few words shown with this piece only, such as "for your review".'),
+          }),
+        ])).min(1).max(12).describe('Each piece: a path in library/ or a title, or { piece, why } to give it its own words.'),
+        why: z.string().max(120).optional().describe(`Words shown with every piece that has none of its own, such as "the budget you asked about".`),
         ...(me().isChief ? { staff: z.string().max(60).optional().describe('Whose library, by name. Leave out for your own.') } : {}),
       },
       run: async ({ pieces, why, staff }) => {
@@ -311,7 +317,10 @@ export function buildTools(deps: ToolsDeps, r: Running): AppTool[] {
           if (!found) return `No one on staff is called ${staff}.`;
           whose = found;
         }
-        const res = artifacts.mark(whose.id, (pieces as string[]).map(String), r.staffId, why ? String(why).trim() || null : null);
+        const words = (w: unknown) => (typeof w === 'string' && w.trim() ? w.trim() : null);
+        const all = words(why);
+        const list = (pieces as (string | { piece: string; why?: string })[]).map((p) => (typeof p === 'string' ? { name: p, why: all } : { name: String(p.piece), why: words(p.why) ?? all }));
+        const res = artifacts.mark(whose.id, list, r.staffId);
         const lines: string[] = [];
         if (res.marked.length) lines.push(`Marked for ${owner()}: ${res.marked.map((a) => `“${a.title}”`).join(', ')}. The mark clears when ${owner()} opens it.`);
         if (res.unknown.length) {

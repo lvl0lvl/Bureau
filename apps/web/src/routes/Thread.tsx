@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ACTION_CLASSES, LEVEL_SHORT, recordTotal } from '@shared/contract.ts';
-import type { Level, Staff, UsageSummary } from '@shared/contract.ts';
-import { BackIcon, Bubble, ColorPicker, Hatch, LevelMarks, LiveMark, Sheet, waitWords } from '../components/bits.tsx';
+import { recordTotal } from '@shared/contract.ts';
+import type { Staff, UsageSummary } from '@shared/contract.ts';
+import { BackIcon, Bubble, LiveMark, Sheet, waitWords } from '../components/bits.tsx';
 import { ArtifactsBlock, ArtifactViewer, useArtifactParam } from '../components/Artifacts.tsx';
 import { Composer, Transcript } from '../components/Conversation.tsx';
 import { ContextLine } from '../components/Usage.tsx';
-import { pickLevel } from '../components/LevelPicker.tsx';
+import { AuthorityList } from '../components/Authority.tsx';
 import { clock, isoDay, plural, when } from '../lib/format.ts';
 import { back, Link } from '../lib/router.tsx';
 import { api } from '../sync/client.ts';
@@ -16,7 +16,6 @@ import { WORK_STATE_LABEL, workState } from './Work.tsx';
 
 export function StaffDetails({ staff }: { staff: Staff }) {
   const dutyMap = useStore((s) => s.duties);
-  const slips = useStore((s) => s.slips);
   const t = useNow(60_000);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   useEffect(() => {
@@ -31,12 +30,6 @@ export function StaffDetails({ staff }: { staff: Staff }) {
   const workOn = useStore((s) => s.workOn);
   const allWork = useWorkList();
   const openWork = useMemo(() => allWork.filter((w) => w.staffId === staff.id && w.status !== 'closed'), [allWork, staff.id]);
-  const proposed = new Set<string>();
-  for (const id in slips) {
-    const s = slips[id]!;
-    if (s.status === 'pending' && s.promotion?.staffId === staff.id) proposed.add(s.promotion.classId);
-  }
-  const classes = ACTION_CLASSES.filter((c) => c.locked || (staff.authority[c.id] ?? 0) > 0);
   const r = staff.record;
   const total = recordTotal(r);
   const turns = usage?.turns?.[staff.id];
@@ -44,27 +37,10 @@ export function StaffDetails({ staff }: { staff: Staff }) {
 
   return (
     <>
-      <Link to={`/settings#staff-${staff.id}`} className="staff-edit">
-        <span className="grow">
-          <b>Edit {staff.name}</b>
-          <small>Name, role, profile, model, duties and skills</small>
-        </span>
-        <span className="btn btn-line btn-sm" aria-hidden="true">
-          Edit
-        </span>
-      </Link>
-
-      <section className="aside-block" style={{ gap: 8 }}>
-        <div className="aside-head" style={{ minHeight: 24 }}>
-          <h2 className="aside-title">Bubble color</h2>
-        </div>
-        <ColorPicker value={staff.color ?? null} letter={staff.letter} onChange={(color) => void api.saveStaff(staff.id, { color })} />
-      </section>
-
       <section className="aside-block">
         <div className="aside-head" style={{ paddingTop: 8 }}>
           <h2 className="aside-title">Duties</h2>
-          <Link to={`/settings#staff-${staff.id}`} className="link">
+          <Link to={`/t/${encodeURIComponent(staff.id)}/edit`} className="link">
             Change
           </Link>
         </div>
@@ -113,26 +89,7 @@ export function StaffDetails({ staff }: { staff: Staff }) {
           </Link>
         </div>
         <p className="aside-hint">Tap a line to change what {staff.name} may do.</p>
-        {classes.map((c) => {
-          const level = (staff.authority[c.id] ?? 0) as Level;
-          if (c.locked) {
-            return (
-              <div key={c.id} className="auth-row">
-                <span className="grow">{c.label}</span>
-                <span className="auth-level never">Never</span>
-                <Hatch width={49} />
-              </div>
-            );
-          }
-          const fixed = c.chiefOnly && !staff.isChief;
-          return (
-            <button key={c.id} className="auth-row" disabled={fixed} onClick={(e) => pickLevel(e.currentTarget, staff.id, c.id)} aria-label={`${c.label}: ${LEVEL_SHORT[level]}. Change`}>
-              <span className="grow">{c.label}</span>
-              <span className="auth-level">{LEVEL_SHORT[level]}</span>
-              <LevelMarks level={level} proposed={proposed.has(c.id) && level < 4} />
-            </button>
-          );
-        })}
+        <AuthorityList staff={staff} />
       </section>
 
       <section className="aside-block" style={{ gap: 10 }}>
@@ -178,6 +135,16 @@ export function StaffDetails({ staff }: { staff: Staff }) {
         </p>
         {turns !== undefined && <small>{plural(turns, 'turn')} in the last seven days.</small>}
       </section>
+
+      <Link to={`/t/${encodeURIComponent(staff.id)}/edit`} className="staff-edit">
+        <span className="grow">
+          <b>Edit {staff.name}</b>
+          <small>Permissions, profile, color, model, duties and skills</small>
+        </span>
+        <span className="btn btn-line btn-sm" aria-hidden="true">
+          Edit
+        </span>
+      </Link>
     </>
   );
 }

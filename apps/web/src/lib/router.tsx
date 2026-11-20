@@ -35,13 +35,15 @@ export function useHash(): string {
 }
 
 export interface Route {
-  name: 'desk' | 'thread' | 'hire' | 'work' | 'staff' | 'books' | 'calendar' | 'artifacts' | 'week' | 'settings' | 'pair' | 'missing';
+  name: 'desk' | 'thread' | 'edit' | 'hire' | 'work' | 'staff' | 'books' | 'calendar' | 'artifacts' | 'week' | 'settings' | 'pair' | 'missing';
   staffId?: string;
 }
 
 export function parseRoute(path: string): Route {
   const p = path.replace(/\/+$/, '') || '/';
   if (p === '/') return { name: 'desk' };
+  const ed = /^\/t\/([^/]+)\/edit$/.exec(p);
+  if (ed) return { name: 'edit', staffId: decodeURIComponent(ed[1]!) };
   if (p.startsWith('/t/')) return { name: 'thread', staffId: decodeURIComponent(p.slice(3)) };
   if (p === '/hire') return { name: 'hire' };
   if (p === '/work') return { name: 'work' };

@@ -197,11 +197,12 @@ test('staff mark pieces for the owner by path or title; the mark clears when ope
   const mine = (app.turns as any).deps.buildTools(r) as { name: string; shape: Record<string, unknown>; run: (a: any) => Promise<string> }[];
   const mark = mine.find((t) => t.name === 'mark_artifacts')!;
   assert.equal('staff' in mark.shape, false, 'only the chief of staff marks in other libraries');
-  const out = await mark.run({ pieces: ['library/Budget 2027 v2 - 2026-11-19.csv', 'Old memo', 'No such thing'], why: 'the budget you asked about' });
+  const out = await mark.run({ pieces: ['library/Budget 2027 v2 - 2026-11-19.csv', { piece: 'Old memo', why: 'for your rewrite' }, 'No such thing'], why: 'the budget you asked about' });
   assert.match(out, /Marked for .*“Budget 2027”, “Old memo”/);
   assert.match(out, /Not found in your library: No such thing\. What is there:/);
   const a = app.artifacts.get(who, 'Budget 2027 - 2026-11-19.csv')!;
   assert.deepEqual({ by: a.marked?.by, why: a.marked?.why }, { by: who, why: 'the budget you asked about' });
+  assert.equal(app.artifacts.get(who, 'Old memo.md')!.marked?.why, 'for your rewrite', 'a piece can carry its own words');
 
   const chiefTools = (app.turns as any).deps.buildTools({ ...r, staffId: chief.id }) as typeof mine;
   const name = app.store.get('staff', who)!.name;

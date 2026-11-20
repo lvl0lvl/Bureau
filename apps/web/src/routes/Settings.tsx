@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent
 import { COMPACT_AT_MAX, COMPACT_AT_MIN, compactAt, usageGuard } from '@shared/contract.ts';
 import type { BackupStatus, CatalogPage, Connector, Device, DriveStatus, Duty, Effort, EngineInfo, InstalledSkill, ModelOption, ReachInfo, Staff, UsageGuard } from '@shared/contract.ts';
 import { Bubble, ColorPicker, useLoad } from '../components/bits.tsx';
+import { AuthorityList } from '../components/Authority.tsx';
 import { CatalogBrowser, SkillInside, SkillMeta } from '../components/Catalog.tsx';
 import { Signature } from '../components/Signature.tsx';
 import { Bar, contextReading, weekReading } from '../components/Usage.tsx';
@@ -203,7 +204,8 @@ function useModels(): ModelOption[] | null {
 
 const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' };
 
-function PersonEditor({ staff }: { staff: Staff }) {
+/** Everything that can be changed about one person. `page` lays it out as its own page rather than inside the staff list. */
+export function PersonEditor({ staff, page = false }: { staff: Staff; page?: boolean }) {
   const t = useNow(60_000);
   const dutyMap = useStore((s) => s.duties);
   const duties = useMemo(() => Object.values(dutyMap).filter((d) => d.staffId === staff.id), [dutyMap, staff.id]);
@@ -226,7 +228,7 @@ function PersonEditor({ staff }: { staff: Staff }) {
   };
 
   return (
-    <div className="stack" style={{ padding: '6px 0 22px 42px' }}>
+    <div className="stack" style={page ? undefined : { padding: '6px 0 22px 42px' }}>
       <form className="stack-sm" onSubmit={save}>
         <div className="grid2">
           <label className="field">
@@ -292,9 +294,11 @@ function PersonEditor({ staff }: { staff: Staff }) {
           <button className="btn btn-blue" type="submit" disabled={!dirty || !f.name.trim()}>
             Save changes
           </button>
-          <Link to={`/t/${staff.id}`} className="btn btn-soft">
-            Open thread
-          </Link>
+          {!page && (
+            <Link to={`/t/${staff.id}`} className="btn btn-soft">
+              Open thread
+            </Link>
+          )}
           {chief && (
             <Link to={`/hire?for=${encodeURIComponent(staff.id)}`} className="btn btn-soft" title={`Talk it through with ${chief.name}: a new profile, starting authority and skills, as a draft you sign.`}>
               Set up again with {chief.name}
@@ -317,6 +321,14 @@ function PersonEditor({ staff }: { staff: Staff }) {
             ))}
         </div>
       </form>
+
+      <div>
+        <div className="aside-head">
+          <h3 className="aside-title">Permissions</h3>
+        </div>
+        <p className="aside-hint">What {staff.name} may do. Tap a line to change it; a change applies from {staff.name}’s next piece of work.</p>
+        <AuthorityList staff={staff} all />
+      </div>
 
       <SkillsSection staff={staff} />
 

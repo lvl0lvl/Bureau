@@ -199,16 +199,16 @@ export class Artifacts {
   }
 
   /**
-   * Mark pieces so they stand out for the owner. Each name is matched against the piece's path
-   * in the library, any of its versions' paths, or its title, ignoring case. Returns what was
-   * marked and the names that matched nothing.
+   * Mark pieces so they stand out for the owner, each with its own few words. Each name is
+   * matched against the piece's path in the library, any of its versions' paths, or its title,
+   * ignoring case. Returns what was marked and the names that matched nothing.
    */
-  mark(staffId: string, names: string[], by: string, why: string | null): { marked: Artifact[]; unknown: string[] } {
+  mark(staffId: string, pieces: { name: string; why: string | null }[], by: string): { marked: Artifact[]; unknown: string[] } {
     const list = this.list(staffId).filter((a) => !a.retiredAt);
     const norm = (s: string) => s.trim().replace(/^library\//, '').toLowerCase();
     const marked: Artifact[] = [];
     const unknown: string[] = [];
-    for (const name of names) {
+    for (const { name, why } of pieces) {
       const n = norm(name);
       const a = list.find((x) => x.id.toLowerCase() === n || x.versions.some((v) => v.path.toLowerCase() === n)) ?? list.find((x) => x.title.toLowerCase() === n);
       if (!a) {

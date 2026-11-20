@@ -12,6 +12,7 @@ import { Books } from './routes/Records.tsx';
 import { ArtifactsPage } from './components/Artifacts.tsx';
 import { Settings } from './routes/Settings.tsx';
 import { StaffMatrix } from './routes/StaffMatrix.tsx';
+import { StaffEdit } from './routes/StaffEdit.tsx';
 import { Thread } from './routes/Thread.tsx';
 import { Work } from './routes/Work.tsx';
 import { boot } from './sync/client.ts';
@@ -48,6 +49,9 @@ export function App() {
   switch (route.name) {
     case 'thread':
       view = <Thread key={route.staffId} staffId={route.staffId!} />;
+      break;
+    case 'edit':
+      view = <StaffEdit key={route.staffId} staffId={route.staffId!} />;
       break;
     case 'hire':
       view = <Hire />;
